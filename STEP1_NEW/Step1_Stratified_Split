@@ -1,0 +1,455 @@
+# ============================================================
+# STEP 1 — STRATIFIED TRAIN / TEST SPLIT
+# ============================================================
+
+import pandas as pd
+import numpy as np
+from pathlib import Path
+
+
+# ------------------------------------------------------------
+# 1. SETTINGS
+# ------------------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent
+
+INPUT_FILE = BASE_DIR / "Original.xlsx"
+INPUT_SHEET = "Working_Data"
+
+OUTPUT_FILE = BASE_DIR / "Step1_Stratified_Split.xlsx"
+
+SEED = 42
+TEST_SIZE = 17
+
+
+# ------------------------------------------------------------
+# 2. LOAD DATA
+# ------------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("STEP 1 — STRATIFIED TRAIN / TEST SPLIT")
+print("=" * 60)
+
+print("\nLoading data...")
+
+df = pd.read_excel(
+    INPUT_FILE,
+    sheet_name=INPUT_SHEET
+)
+
+print(f"Total observations: {len(df)}")
+
+
+# ------------------------------------------------------------
+# 3. CHECK DATA
+# ------------------------------------------------------------
+
+required_columns = [
+    "Point_ID",
+    "d",
+    "Rpm",
+    "hc",
+    "A",
+    "Vmin"
+]
+
+missing = [
+    col for col in required_columns
+    if col not in df.columns
+]
+
+if missing:
+    raise ValueError(
+        f"Missing columns: {missing}"
+    )
+
+if len(df) != 84:
+    raise ValueError(
+        f"Expected 84 observations, found {len(df)}"
+    )
+
+# Check factorial structure
+diameters = sorted(df["d"].unique())
+rpm_values = sorted(df["Rpm"].unique())
+
+print(f"Diameters: {diameters}")
+print(f"RPM values: {rpm_values}")
+
+if len(diameters) != 6 or len(rpm_values) != 14:
+    raise ValueError(
+        "Data does not contain the expected "
+        "6 × 14 factorial structure."
+    )
+
+if df.duplicated(
+    subset=["d", "Rpm"]
+).any():
+    raise ValueError(
+        "Duplicate d/Rpm combinations detected."
+    )
+
+print("Data verification: PASSED")
+
+
+# ------------------------------------------------------------
+# 4. CREATE RPM STRATA
+# ------------------------------------------------------------
+#
+# RPM is divided into three regions:
+#
+# Low    : 0–80 RPM
+# Medium : 100–180 RPM
+# High   : 200–260 RPM
+#
+# This ensures that the test set covers the entire
+# operating-speed range.
+# ------------------------------------------------------------
+
+def rpm_region(rpm):
+
+    if rpm <= 80:
+        return "Low RPM"
+
+    elif rpm <= 180:
+        return "Medium RPM"
+
+    else:
+        return "High RPM"
+
+
+df["RPM_Region"] = df["Rpm"].apply(rpm_region)
+
+
+# ------------------------------------------------------------
+# 5. STRATIFIED TEST SELECTION
+# ------------------------------------------------------------
+
+rng = np.random.default_rng(SEED)
+
+test_indices = []
+
+# Six diameter levels.
+# Five diameters contribute 3 test points.
+# One diameter contributes 2 points.
+#
+# Total = 5 × 3 + 1 × 2 = 17
+#
+# Each diameter is represented in the test set.
+
+for i, diameter in enumerate(diameters):
+
+    diameter_data = df[
+        df["d"] == diameter
+    ]
+
+    # Five diameters → 3 points
+    # Last diameter → 2 points
+    n_test = 2 if i == len(diameters) - 1 else 3
+
+    # Select across RPM regions
+    selected = []
+
+    regions = [
+        "Low RPM",
+        "Medium RPM",
+        "High RPM"
+    ]
+
+    # One point from each RPM region
+    for region in regions:
+
+        candidates = diameter_data[
+            diameter_data["RPM_Region"] == region
+        ]
+
+        choice = rng.choice(
+            candidates.index
+        )
+
+        selected.append(choice)
+
+    # If only 2 points are required,
+    # randomly remove one of the three regions.
+    if n_test == 2:
+
+        remove_position = rng.integers(
+            0,
+            len(selected)
+        )
+
+        selected.pop(remove_position)
+
+    test_indices.extend(selected)
+
+
+# ------------------------------------------------------------
+# 6. CREATE TRAIN / TEST DATASETS
+# ------------------------------------------------------------
+
+test_df = df.loc[
+    test_indices
+].copy()
+
+train_df = df.drop(
+    test_indices
+).copy()
+
+
+# Remove helper column
+test_df = test_df.drop(
+    columns=["RPM_Region"]
+)
+
+train_df = train_df.drop(
+    columns=["RPM_Region"]
+)
+
+
+# ------------------------------------------------------------
+# 7. VERIFY SPLIT
+# ------------------------------------------------------------
+
+print("\n" + "-" * 60)
+print("SPLIT RESULTS")
+print("-" * 60)
+
+print(f"Training / Anchor points : {len(train_df)}")
+print(f"Test / Holdout points    : {len(test_df)}")
+
+if len(train_df) != 67:
+    raise ValueError("Training set is not 67 points.")
+
+if len(test_df) != TEST_SIZE:
+    raise ValueError("Test set is not 17 points.")
+
+
+# ------------------------------------------------------------
+# 8. DISPLAY TEST POINTS
+# ------------------------------------------------------------
+
+test_display = test_df[
+    [
+        "Point_ID",
+        "d",
+        "Rpm"
+    ]
+].sort_values(
+    ["d", "Rpm"]
+)
+
+print("\nSelected Test Points:")
+print(
+    test_display.to_string(
+        index=False
+    )
+)
+
+
+# ------------------------------------------------------------
+# 9. CREATE SPLIT LOG
+# ------------------------------------------------------------
+
+split_log = pd.DataFrame({
+    "Parameter": [
+        "Original observations",
+        "Training / Anchor observations",
+        "Test / Holdout observations",
+        "Test percentage",
+        "Random seed",
+        "Sampling method",
+        "Diameter stratification",
+        "RPM stratification",
+        "Interpolation before split",
+        "Test points used for interpolation",
+        "Test points used for ML training"
+    ],
+
+    "Value": [
+        84,
+        67,
+        17,
+        f"{17 / 84 * 100:.2f}%",
+        SEED,
+        "Stratified space-covering sampling",
+        "All 6 diameter levels represented",
+        "Low / Medium / High RPM regions represented",
+        "No",
+        "No",
+        "No"
+    ]
+})
+
+
+# ------------------------------------------------------------
+# 10. DIAMETER DISTRIBUTION CHECK
+# ------------------------------------------------------------
+
+diameter_check = []
+
+for diameter in diameters:
+
+    diameter_check.append({
+        "d": diameter,
+        "Total": len(
+            df[df["d"] == diameter]
+        ),
+        "Training": len(
+            train_df[
+                train_df["d"] == diameter
+            ]
+        ),
+        "Test": len(
+            test_df[
+                test_df["d"] == diameter
+            ]
+        )
+    })
+
+diameter_check = pd.DataFrame(
+    diameter_check
+)
+
+
+# ------------------------------------------------------------
+# 11. RPM REGION CHECK
+# ------------------------------------------------------------
+
+# Recreate RPM region only for checking
+
+check_df = df.copy()
+
+check_df["RPM_Region"] = check_df[
+    "Rpm"
+].apply(rpm_region)
+
+train_check = train_df.copy()
+train_check["RPM_Region"] = train_check[
+    "Rpm"
+].apply(rpm_region)
+
+test_check = test_df.copy()
+test_check["RPM_Region"] = test_check[
+    "Rpm"
+].apply(rpm_region)
+
+rpm_check = []
+
+for region in [
+    "Low RPM",
+    "Medium RPM",
+    "High RPM"
+]:
+
+    rpm_check.append({
+        "RPM Region": region,
+        "Total": len(
+            check_df[
+                check_df["RPM_Region"] == region
+            ]
+        ),
+        "Training": len(
+            train_check[
+                train_check["RPM_Region"] == region
+            ]
+        ),
+        "Test": len(
+            test_check[
+                test_check["RPM_Region"] == region
+            ]
+        )
+    })
+
+rpm_check = pd.DataFrame(
+    rpm_check
+)
+
+
+# ------------------------------------------------------------
+# 12. SAVE OUTPUT
+# ------------------------------------------------------------
+
+print("\nSaving Excel file...")
+
+with pd.ExcelWriter(
+    OUTPUT_FILE,
+    engine="openpyxl"
+) as writer:
+
+    # Original clean dataset
+    df.drop(
+        columns=["RPM_Region"]
+    ).to_excel(
+        writer,
+        sheet_name="Working_Data",
+        index=False
+    )
+
+    # 67 real training anchors
+    train_df.to_excel(
+        writer,
+        sheet_name="Train_Anchors",
+        index=False
+    )
+
+    # 17 untouched real test points
+    test_df.to_excel(
+        writer,
+        sheet_name="Test_Holdout",
+        index=False
+    )
+
+    # Exact test point IDs
+    test_display.to_excel(
+        writer,
+        sheet_name="Test_Point_IDs",
+        index=False
+    )
+
+    # Methodology record
+    split_log.to_excel(
+        writer,
+        sheet_name="Split_Log",
+        index=False
+    )
+
+    # Checks
+    diameter_check.to_excel(
+        writer,
+        sheet_name="Diameter_Check",
+        index=False
+    )
+
+    rpm_check.to_excel(
+        writer,
+        sheet_name="RPM_Check",
+        index=False
+    )
+
+
+# ------------------------------------------------------------
+# 13. FINISHED
+# ------------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("STEP 1 COMPLETED SUCCESSFULLY")
+print("=" * 60)
+
+print(f"\nOutput saved to:")
+print(OUTPUT_FILE)
+
+print("\nCreated sheets:")
+print("  1. Working_Data")
+print("  2. Train_Anchors")
+print("  3. Test_Holdout")
+print("  4. Test_Point_IDs")
+print("  5. Split_Log")
+print("  6. Diameter_Check")
+print("  7. RPM_Check")
+
+print("\nIMPORTANT:")
+print(
+    "The 17 Test_Holdout points must remain untouched "
+    "for all subsequent interpolation and ML steps."
+)
+
+print("=" * 60)

@@ -1,0 +1,1887 @@
+
+MASTER CONTINUATION CONTEXT
+REVISED AIR-CORE / VORTEX DATA-DRIVEN MODELLING PROJECT
+FOR HANDOFF TO ANOTHER PERSON / ANOTHER FOLDER
+
+================================================================================
+1. PURPOSE OF THIS DOCUMENT
+================================================================================
+
+This document is the complete continuation context for the research/modelling
+project from the current point onward.
+
+A second person should be able to place this file in the project folder and
+continue the work without relying on the previous conversation.
+
+The project is a staged engineering/data-science study of air-core/vortex
+behaviour in a rotating draining system. The current project state is after
+completion of:
+
+    STEP 0  - Revised data validation
+    STEP 1  - Experimental train/test split
+    STEP 2  - LOOCV method selection
+    STEP 3  - RPM-only interpolation validation
+    STEP 4  - RPM-only extrapolation validation
+    STEP 5  - Independent experimental holdout validation
+    STEP 5A - Holdout audit + cross-response characterization
+    STEP 5B - Final data consolidation + EDA/graph-ready workbook
+
+NEXT WORK STARTS AT:
+
+    STEP 6 - ML DATA PREPARATION / LEAKAGE AUDIT
+
+The major methodological principle is:
+
+    MEASURED > INTERPOLATED > EXTRAPOLATED
+
+Measured experimental observations are the primary evidence.
+Interpolated and extrapolated observations are model-generated representations
+and must never silently be treated as independent experiments.
+
+================================================================================
+2. CURRENT RESEARCH PROJECT
+================================================================================
+
+Working project theme:
+
+    Data-driven modelling of air-core behaviour in a rotating/draining system.
+
+Current working project title used previously:
+
+    “A Staged Framework for Data-Driven Prediction, Characterization,
+     Explainable Classification, and Decision Support for Air-Core Behaviour
+     in a Rotating System”
+
+The title may still evolve. Do not overclaim “classification”, “explainability”,
+or “decision support” until those stages are actually completed.
+
+Physical system:
+    Draining liquid / rotating system with formation of a free-surface
+    air-core vortex.
+
+Primary experimental inputs:
+    d   = port diameter, mm
+    RPM = rotational speed, RPM
+
+Original experimental design:
+    6 diameters:
+        6, 8, 10, 12, 14, 16 mm
+
+    14 RPM levels:
+        0, 20, 40, 60, 80, 100, 120, 140,
+        160, 180, 200, 220, 240, 260 RPM
+
+Total real experimental observations:
+    6 × 14 = 84
+
+================================================================================
+3. CANONICAL RESPONSE VARIABLES
+================================================================================
+
+The revised project no longer uses the older target formulation involving
+raw hc, A, and Vmin.
+
+CURRENT CANONICAL MODELLING COLUMNS:
+
+    Point_ID
+    d
+    Rpm
+    hc_hi
+    td_to
+    Vch
+
+IMPORTANT:
+    The correct drainage-time column name everywhere is:
+
+        td_to
+
+    NOT:
+
+        td/to
+
+Use "td_to" in all future scripts, Excel sheets, DataFrames, model code,
+plots, formulas, filenames, and ML work.
+
+TARGET DEFINITIONS:
+
+1) hc_hi
+    Dimensionless / normalized critical air-core height:
+        hc / hi
+
+2) td_to
+    Dimensionless / normalized drainage time:
+        td / to
+
+3) Vch
+    Characteristic-volume response.
+
+IMPORTANT:
+    Vch should NOT be treated as a literal arithmetic product of the Excel
+    response columns A and hc.
+
+The source-paper formulation describes characteristic volume as a normalized
+quantity combining air-core height and blockage:
+    Vch = A_air * hc / (A_total * hi)
+
+The source paper also describes hc/hi and td/to as normalized quantities and
+argues that critical height alone does not fully quantify vortexing because
+blockage matters.
+
+Source files present in the project/library include:
+    JSR2023.pdf
+    JSR2023(1).pdf
+    JSR2023(2).pdf
+
+Source paper:
+    Journal of Spacecraft and Rockets, 2023-era paper
+    “New Parameter to Characterize Rankine Vortex Formation in Liquid
+     Draining Tanks”
+    DOI: 10.2514/1.A35553
+
+Do not re-derive or alter the source definitions unless the source is explicitly
+reviewed.
+
+================================================================================
+4. IMPORTANT SOURCE/DATA AUDIT FINDING
+================================================================================
+
+At RPM = 0:
+
+    td_to = 1.0 for all six diameters
+    Vch   = 0 for all six diameters
+
+But the recorded experimental hc_hi values at RPM = 0 are nonzero:
+
+    min = 0.023333
+    max = 0.046667
+
+The source-paper discussion describes hc as zero at no rotation.
+
+DECISION:
+    Do NOT force the recorded hc_hi values to zero.
+
+Keep the measured values exactly as recorded.
+
+Treat this as an explicit source/data audit point to be discussed later.
+
+Never overwrite the original observations merely to satisfy an expected physical
+condition.
+
+================================================================================
+5. ABSOLUTE PROJECT RULES
+================================================================================
+
+These rules apply to all future work.
+
+1. Preserve Point_ID.
+2. Never overwrite the original/revised branch data.
+3. Keep measured, interpolated, and extrapolated provenance explicit.
+4. The 17 Test_Holdout observations must remain isolated from model fitting and
+   model selection after Step 1.
+5. Do not use Test_Holdout to tune ML hyperparameters.
+6. Do not randomly split all 84 or all 303/synthetic points as an “independent”
+   80:20 dataset.
+7. Do not treat interpolated values as independent experiments.
+8. Do not treat extrapolated values as experiments.
+9. Different response variables may legitimately use different models.
+10. Do not select models using R² alone.
+11. Check RMSE, MAE, MAPE, coverage, physical validity, residual behaviour,
+    stability, complexity, and applicability.
+12. Do not silently clip negative or otherwise physically invalid predictions.
+13. Report invalid/unavailable predictions instead of hiding them.
+14. Do not use high-RPM extrapolation simply because a numerical value can be
+    produced.
+15. Classification must come after continuous modelling.
+16. Classification labels must have engineering justification.
+17. Use BASE_DIR = Path(__file__).resolve().parent in scripts.
+18. Keep target spelling exactly:
+        hc_hi
+        td_to
+        Vch
+19. Do not introduce intermediate diameters unless the project scope is
+    explicitly changed later.
+20. Prefer reproducible scripts with fixed seeds, deterministic splits, and
+    clear output files.
+21. Maintain a written record of each step with:
+        purpose
+        inputs
+        methods
+        checks
+        results
+        decisions
+        scientific significance
+        next step
+
+================================================================================
+6. FOLDER / FILE STRUCTURE
+================================================================================
+
+Primary working folder:
+
+    D:\Projects\clg_final_yr\STEP1_REVISED\
+
+Important files currently associated with this workflow:
+
+    Original.xlsx
+
+    Step0_Revised_Data_Validation.py
+    Step0_Revised_Data_Validation.xlsx
+
+    Step1_Revised_Stratified_Split.py
+    Step1_Stratified_Split.xlsx
+
+    Step2_Revised_LOOCV_Method_Selection.py
+    Step2_LOOCV_Results.xlsx
+
+    OLD / SUPERSEDED STEP 3:
+    Step3_Revised_Interpolation_Validation.py
+    Step3_Interpolation_Validation.xlsx
+
+    OFFICIAL REVISED STEP 3:
+    Step3_RPMOnly_Interpolation_Validation.py
+    Step3_RPMOnly_Interpolation_Validation.xlsx
+
+    OLD / SUPERSEDED STEP 4:
+    Step4_Progressive_Extrapolation_Validation.py
+    Step4_Progressive_Extrapolation_Validation.xlsx
+    This was a global 2D RSM extrapolation branch and is NOT the preferred
+    revised design.
+
+    OFFICIAL REVISED STEP 4:
+    Step4_RPMOnly_Extrapolation_Validation.py
+    Step4_RPMOnly_Extrapolation_Validation.xlsx
+
+    Step5_Final_Experimental_Holdout_Validation.py
+    Step5_Final_Experimental_Holdout_Validation.xlsx
+
+    Step5A_Holdout_Audit_CrossResponse.py
+    Step5A_Holdout_Audit_CrossResponse.xlsx
+
+    OFFICIAL CONSOLIDATED WORKBOOK:
+    Step5B_Final_Analysis_Consolidated.xlsx
+
+    Step5B_Final_Analysis_Consolidation.py
+    This original generated script required artifact_tool and failed in the
+    user's C:\Python314 environment.
+
+    COMPATIBLE SCRIPT THAT WAS USED SUCCESSFULLY:
+    Step5B_Final_Analysis_Consolidation_Compatible.py
+
+================================================================================
+7. PYTHON ENVIRONMENT NOTE
+================================================================================
+
+The user's environment includes:
+
+    C:\Python314\python.exe
+
+The first Step5B consolidation script imported:
+
+    artifact_tool
+
+and failed with:
+
+    ModuleNotFoundError: No module named 'artifact_tool'
+
+A compatible Step5B script using standard Python/openpyxl/pandas was then created
+and executed successfully.
+
+Therefore:
+    Do NOT assume artifact_tool is installed in the user's local Python 3.14
+    environment.
+
+Use the compatible approach unless the environment is deliberately changed.
+
+================================================================================
+8. STEP 0 — REVISED DATA VALIDATION
+================================================================================
+
+Input:
+    Original.xlsx
+    sheet: Working_Data
+
+Output:
+    Step0_Revised_Data_Validation.xlsx
+
+Results:
+
+    Rows: 84
+
+    Diameters:
+        [6, 8, 10, 12, 14, 16]
+
+    RPM:
+        [0,20,40,60,80,100,120,140,160,180,200,220,240,260]
+
+    Unique coordinates:
+        84
+
+Targets:
+
+    hc_hi:
+        N = 84
+        nonfinite = 0
+        negative = 0
+        min = 0.023333
+        max = 0.993333
+
+    td_to:
+        N = 84
+        nonfinite = 0
+        negative = 0
+        min = 1.0
+        max = 4.681920
+
+    Vch:
+        N = 84
+        nonfinite = 0
+        negative = 0
+        min = 0
+        max = 0.367216
+
+RPM = 0 audit:
+
+    td_to:
+        all 1.0
+
+    Vch:
+        all 0
+
+    hc_hi:
+        nonzero values from 0.023333 to 0.046667
+
+Grid check:
+    84 unique complete 6 × 14 grid.
+
+Overall:
+    PASS
+
+Workbook sheets:
+    Working_Data
+    Overall_Status
+    Basic_Checks
+    Unique_Values
+    Missing_Check
+    PointID_Check
+    Duplicate_PointIDs
+    Coordinate_Check
+    Duplicate_Coordinates
+    Grid_Check
+    Missing_Coordinates
+    Unexpected_Coordinates
+    Target_Physical_Check
+    RPM0_Sanity_Check
+    RPM0_Data
+    Diameter_Summary
+    RPM_Summary
+    Method_Notes
+
+LOCK:
+    Dataset structure is valid.
+
+================================================================================
+9. STEP 1 — FIXED EXPERIMENTAL TRAIN / TEST SPLIT
+================================================================================
+
+Output:
+    Step1_Stratified_Split.xlsx
+
+Purpose:
+    Lock a reproducible, leakage-safe split of the 84 real experimental points.
+
+Train:
+    67 Train_Anchors
+
+Test:
+    17 Test_Holdout
+
+Exact locked Test_Holdout Point_IDs:
+
+    [71,79,83,59,64,70,43,51,53,29,36,42,18,23,27,4,8]
+
+Important:
+    This split is response-independent because it is based on experimental
+    input coordinates.
+
+Diameter coverage:
+
+    d=6:
+        train 11, test 3
+        train RPM 20–260
+        test RPM 0–240
+
+    d=8:
+        train 11, test 3
+        train RPM 0–240
+        test RPM 40–260
+
+    d=10:
+        train 11, test 3
+        train RPM 20–260
+        test RPM 0–200
+
+    d=12:
+        train 11, test 3
+        train RPM 20–240
+        test RPM 0–260
+
+    d=14:
+        train 11, test 3
+        train RPM 0–260
+        test RPM 60–240
+
+    d=16:
+        train 12, test 2
+        train RPM 0–260
+        test RPM 60–140
+
+RPM regions:
+
+    Low 0–80:
+        total 30
+        train 24
+        test 6
+
+    Medium 100–180:
+        total 30
+        train 24
+        test 6
+
+    High 200–260:
+        total 24
+        train 19
+        test 5
+
+Target summary:
+
+    hc_hi:
+        train min 0.026667
+        train max 0.993333
+        test min 0.023333
+        test max 0.986667
+
+    td_to:
+        train 1.0–4.681920
+        test 1.0–3.943080
+
+    Vch:
+        train 0–0.367216
+        test 0–0.330783
+
+Checks:
+
+    Point_ID overlap = 0
+    Coordinate overlap = 0
+    All diameters represented in train and test
+    PASS
+
+Important coverage caveat:
+    d=16 has only two test points and no high-RPM test point.
+    Do not describe the split as mathematically optimal space filling.
+    It is reproducible and stratified/space-covering.
+
+LOCK:
+    Split remains fixed throughout the project.
+
+================================================================================
+10. STEP 2 — REVISED LOOCV METHOD SELECTION
+================================================================================
+
+Input:
+    Step1_Stratified_Split.xlsx
+
+Output:
+    Step2_LOOCV_Results.xlsx
+
+Data protocol:
+
+    Train_Anchors used = 67
+    Test_Holdout used = 0
+    Synthetic data = 0
+
+Methods:
+
+    Linear Griddata
+    Cubic Griddata
+    1st-order RSM
+    2nd-order RSM
+    3rd-order RSM
+
+Metrics:
+
+    R²
+    RMSE
+    MAE
+    MSE
+    MAPE
+
+Important:
+    Griddata may produce invalid LOOCV folds because removing one point can
+    place it outside the convex hull of the remaining points.
+
+Results:
+
+hc_hi:
+
+    Linear Griddata:
+        coverage 92.537313%
+        R² 0.994525
+        RMSE 0.016738
+        MAE 0.012639
+        MAPE 3.333519%
+
+    Cubic Griddata:
+        coverage 92.537313%
+        R² 0.995382
+        RMSE 0.015372
+        MAE 0.012114
+        MAPE 2.948601%
+
+    1st-order RSM:
+        R² 0.812613
+        RMSE 0.109755
+        MAE 0.085900
+
+    2nd-order RSM:
+        R² 0.948945
+        RMSE 0.057289
+        MAE 0.039655
+
+    3rd-order RSM:
+        R² 0.968074
+        RMSE 0.045303
+        MAE 0.026986
+
+td_to:
+
+    Linear Griddata:
+        R² 0.985249
+        RMSE 0.108227
+        MAE 0.081755
+
+    Cubic Griddata:
+        R² 0.981810
+        RMSE 0.120182
+        MAE 0.098445
+
+    1st-order RSM:
+        R² 0.794305
+        RMSE 0.434158
+        MAE 0.321061
+
+    2nd-order RSM:
+        R² 0.958221
+        RMSE 0.195665
+        MAE 0.148569
+
+    3rd-order RSM:
+        R² 0.985885
+        RMSE 0.113731
+        MAE 0.088810
+
+Vch:
+
+    Linear Griddata:
+        R² 0.964465
+        RMSE 0.016606
+        MAE 0.011776
+
+    Cubic Griddata:
+        R² 0.968985
+        RMSE 0.015514
+        MAE 0.012143
+
+    1st-order RSM:
+        R² 0.804872
+        RMSE 0.042602
+        MAE 0.032362
+
+    2nd-order RSM:
+        R² 0.975384
+        RMSE 0.015131
+        MAE 0.012453
+
+    3rd-order RSM:
+        R² 0.972046
+        RMSE 0.016125
+        MAE 0.013129
+
+Important interpretation:
+    Automatic ranking was designed to prefer full coverage.
+    This ranking was NOT treated as the final scientific lock.
+
+Why:
+    Griddata has geometry-related LOOCV failures, which do not necessarily mean
+    it is unusable for the intended in-range interpolation problem.
+
+Next step was therefore response-specific interpolation validation.
+
+================================================================================
+11. STEP 3 — IMPORTANT HISTORY AND OFFICIAL REVISED RESULT
+================================================================================
+
+There were two Step 3 versions.
+
+OLD SUPERSEDED VERSION:
+    Step3_Revised_Interpolation_Validation.py
+
+It generated a 5-RPM grid with intermediate diameters:
+    6,7,8,...,16 mm
+
+This is NO LONGER THE OFFICIAL PROJECT DESIGN.
+
+The user explicitly decided:
+
+    NO INTERMEDIATE DIAMETERS.
+
+OFFICIAL STEP 3:
+    Step3_RPMOnly_Interpolation_Validation.py
+
+Output:
+    Step3_RPMOnly_Interpolation_Validation.xlsx
+
+Official interpolation domain:
+
+    Diameters:
+        6, 8, 10, 12, 14, 16 mm only
+
+    Measured RPM:
+        0,20,...,260
+
+    In-range interpolation grid:
+        0–260 RPM in 5-RPM increments
+
+Total:
+    6 × 53 = 318 grid coordinates
+
+17 Test_Holdout coordinates excluded:
+
+    318 - 17 = 301 non-test coordinates
+
+No d=7,9,11,13,15 points are generated.
+
+Data protocol:
+
+    Train_Anchors = 67
+    Test_Holdout used = 0
+    Synthetic data used for CV = 0
+    Eligible interpolation folds = 34
+
+Official interpolation validation results:
+
+hc_hi:
+
+    Linear Griddata:
+        R² 0.992541
+        RMSE 0.017102
+        MAE 0.013007
+        physical violations 0
+
+    Cubic Griddata:
+        R² 0.993539
+        RMSE 0.015916
+        MAE 0.012195
+        physical violations 0
+
+    1st-order RSM:
+        R² 0.793723
+        RMSE 0.089935
+        MAE 0.076429
+        physical violations 3
+
+    2nd-order RSM:
+        R² 0.957461
+        RMSE 0.040841
+        MAE 0.034715
+        physical violations 1
+
+    3rd-order RSM:
+        R² 0.979121
+        RMSE 0.028613
+        MAE 0.022718
+        physical violations 0
+
+Selected:
+    hc_hi → Cubic Griddata
+
+td_to:
+
+    Linear Griddata:
+        R² 0.990103
+        RMSE 0.091633
+        MAE 0.073950
+        physical violations 0
+
+    Cubic Griddata:
+        R² 0.984555
+        RMSE 0.114473
+        MAE 0.094800
+
+    1st-order RSM:
+        R² 0.844565
+        RMSE 0.363149
+        MAE 0.291725
+
+    2nd-order RSM:
+        R² 0.975950
+        RMSE 0.142846
+        MAE 0.118979
+
+    3rd-order RSM:
+        R² 0.991579
+        RMSE 0.084529
+        MAE 0.069777
+        physical violations 0
+
+Selected:
+    td_to → 3rd-order RSM
+
+Vch:
+
+    Linear Griddata:
+        R² 0.964318
+        RMSE 0.016042
+        MAE 0.011271
+
+    Cubic Griddata:
+        R² 0.963918
+        RMSE 0.016131
+        MAE 0.012253
+
+    1st-order RSM:
+        R² 0.799466
+        RMSE 0.038029
+        MAE 0.028418
+
+    2nd-order RSM:
+        R² 0.975402
+        RMSE 0.013319
+        MAE 0.010505
+
+    3rd-order RSM:
+        R² 0.986211
+        RMSE 0.009972
+        MAE 0.008126
+        physical violations 0
+
+Selected:
+    Vch → 3rd-order RSM
+
+RPM-only grid coverage:
+
+    hc_hi / Cubic Griddata:
+        requested 318
+        test excluded 17
+        non-test = 301
+        measured train = 67
+        synthetic = 231
+        valid output = 298
+        unavailable = 3
+        coverage = 99.003322%
+
+    td_to / 3rd RSM:
+        valid 301/301
+        coverage 100%
+
+    Vch / 3rd RSM:
+        valid 301/301
+        coverage 100%
+
+Important:
+    The three unavailable hc_hi Griddata points are not silently filled.
+
+OFFICIAL IN-RANGE MODEL LOCK FOR THE CURRENT PROJECT:
+
+    hc_hi → Cubic Griddata
+    td_to → 3rd-order RSM
+    Vch   → 3rd-order RSM
+
+These are the final current classical in-range candidates, subject to independent
+holdout evaluation.
+
+================================================================================
+12. STEP 4 — RPM-ONLY EXTRAPOLATION
+================================================================================
+
+There was an old Step 4 that used global 2D RSMs in d and RPM.
+
+That branch is superseded.
+
+OFFICIAL REVISED STEP 4:
+    Step4_RPMOnly_Extrapolation_Validation.py
+
+Purpose:
+    Determine whether high-RPM extrapolation can be supported without also
+    introducing diameter extrapolation.
+
+No d=4 or d=18 predictions are used in this official Step 4.
+
+At each measured diameter:
+    d = 6,8,10,12,14,16
+
+Candidate RPM polynomials:
+
+    1st-order
+    2nd-order
+    3rd-order
+
+One-step tests:
+    <=180 → 200
+    <=200 → 220
+    <=220 → 240
+    <=240 → 260
+
+Multi-step tests:
+    <=160 → higher measured RPMs
+    <=180 → higher measured RPMs
+    <=200 → higher measured RPMs
+
+Final requested extrapolation values in this stage:
+    RPM = 280,300,320
+    only at measured diameters
+
+OFFICIAL RESULTS:
+
+hc_hi:
+
+    1st-order:
+        one-step R² = -9.751175
+        one-step RMSE = 0.140922
+        one-step physical violations = 16
+        multi-step R² = -28.212419
+        multi-step RMSE = 0.245940
+        multi-step physical violations = 53
+
+    2nd-order:
+        one-step R² = -3.463126
+        one-step RMSE = 0.090797
+        one-step physical violations = 0
+        multi-step R² = -30.826811
+        multi-step RMSE = 0.256710
+        multi-step physical violations = 0
+
+    3rd-order:
+        one-step R² = -1.310996
+        one-step RMSE = 0.065336
+        one-step physical violations = 7
+        multi-step R² = -83.863446
+        multi-step RMSE = 0.419186
+        multi-step physical violations = 33
+
+Decision:
+    NO VALIDATED RPM-EXTRAPOLATION MODEL for hc_hi.
+
+Do NOT treat any 280–320 prediction of hc_hi as validated.
+
+Vch:
+
+    1st-order:
+        one-step R² = 0.274368
+        multi-step R² = -1.212522
+
+    2nd-order:
+        one-step R² = 0.803400
+        multi-step R² = -0.365619
+
+    3rd-order:
+        one-step R² = 0.949596
+        multi-step R² = -2.077709
+
+All had zero physical violations, but all fail the predefined multi-step
+support criterion because multi-step R² is negative.
+
+Decision:
+    NO VALIDATED RPM-EXTRAPOLATION MODEL for Vch.
+
+td_to:
+
+    1st-order:
+        one-step R² = 0.780730
+        multi-step R² = 0.337574
+
+    2nd-order:
+        one-step R² = 0.923704
+        multi-step R² = 0.496798
+
+    3rd-order:
+        one-step R² = 0.986981
+        multi-step R² = 0.728535
+        physical violations = 0
+
+Decision:
+    3rd-order RPM polynomial is a PROVISIONAL RPM-only extrapolation candidate
+    for td_to.
+
+Important:
+    It is still an extrapolation model, not experimentally validated at
+    280–320 RPM.
+
+Therefore the current extrapolation status is:
+
+    hc_hi → not validated
+    td_to → provisional
+    Vch → not validated
+
+No intermediate diameters are used in this official branch.
+
+================================================================================
+13. STEP 5 — INDEPENDENT EXPERIMENTAL HOLDOUT VALIDATION
+================================================================================
+
+Input:
+    Step1_Stratified_Split.xlsx
+
+Selected models from Step 3 are evaluated for the first time on all 17
+independent Test_Holdout observations.
+
+Test set is NOT used for model selection.
+
+Results:
+
+hc_hi:
+    Method = Cubic Griddata
+    Test points = 17
+    Valid predictions = 16
+    Coverage = 94.117647%
+    Physical violations = 1
+    R² = 0.999241
+    RMSE = 0.008159
+    MAE = 0.006185
+    MAPE = 1.456836%
+
+td_to:
+    Method = 3rd-order RSM
+    Test points = 17
+    Valid predictions = 17
+    Coverage = 100%
+    Physical violations = 0
+    R² = 0.988930
+    RMSE = 0.099547
+    MAE = 0.072097
+    MAPE = 4.497070%
+
+Vch:
+    Method = 3rd-order RSM
+    Test points = 17
+    Valid predictions = 17
+    Coverage = 100%
+    Physical violations = 1
+    R² = 0.987744
+    RMSE = 0.011738
+    MAE = 0.008761
+    MAPE = 3.931340%
+
+Interpretation:
+    td_to has clean 17/17 independent coverage and zero physical violations.
+
+    hc_hi has excellent numerical accuracy on valid predictions, but one point
+    has no Cubic Griddata prediction because it lies outside the convex hull of
+    the training data.
+
+    Vch has excellent numerical accuracy, but one prediction is physically
+    invalid and requires explicit handling.
+
+Do NOT use these holdout results to reselect models.
+
+================================================================================
+14. STEP 5A — HOLDOUT AUDIT + CROSS-RESPONSE CHARACTERIZATION
+================================================================================
+
+The exact problematic point is:
+
+    Point_ID = 71
+    d = 6 mm
+    RPM = 0
+
+For hc_hi:
+
+    Actual = 0.023333
+    Predicted = NaN
+    Prediction valid = False
+    Physical status = INVALID_NONFINITE
+    Hull_Inside_Train = False
+
+Interpretation:
+    Cubic Griddata cannot predict this point because removing Point 71 from the
+    84-point dataset placed the point outside the convex hull of the 67 training
+    observations.
+
+This should be treated as an applicability-domain issue, not silently repaired.
+
+For Vch:
+
+    Actual = 0
+    Predicted = -0.033295
+    Residual = -0.033295
+    Physical status = PHYSICAL_VIOLATION
+    Hull_Inside_Train = False
+
+Interpretation:
+    The 3rd-order RSM returned a negative Vch prediction.
+    Do NOT simply clip it to zero.
+    Preserve the raw prediction and flag it as physically invalid.
+
+Current model status:
+
+    hc_hi:
+        strong predictive accuracy, but Griddata convex-hull coverage limitation
+
+    td_to:
+        strong independent performance and no physical violations
+
+    Vch:
+        strong independent accuracy but one physical-boundary violation
+
+Do not reselect models from the holdout.
+
+CROSS-RESPONSE CORRELATIONS USING ALL 84 REAL EXPERIMENTS:
+
+    hc_hi vs td_to:
+        Pearson r = 0.419944
+        Spearman rho = 0.259945
+
+    hc_hi vs Vch:
+        Pearson r = 0.813394
+        Spearman rho = 0.677183
+
+    td_to vs Vch:
+        Pearson r = 0.828596
+        Spearman rho = 0.835985
+
+Interpret these as associations only, not causality.
+
+================================================================================
+15. STEP 5B — FINAL CONSOLIDATED WORKBOOK
+================================================================================
+
+The official consolidated workbook was successfully created:
+
+    Step5B_Final_Analysis_Consolidated.xlsx
+
+Created successfully with:
+
+    Train rows = 67
+    Holdout rows = 17
+    Experimental rows = 84
+    RPM interpolation rows = 301
+    Intermediate diameters generated = 0
+
+Sheets:
+
+    README
+    Experimental_84
+    ML_Train_67
+    ML_Holdout_17
+    RPM_Interpolation_301
+    RPM_Extrapolation_Ref
+    Holdout_Model_Check
+    Model_History
+    EDA_Summary
+    Response_Correlations
+    Graph_hc_hi
+    Graph_td_to
+    Graph_Vch
+
+The README in the workbook records the modelling/provenance rules.
+
+ML default policy:
+
+    ML_Train_67       = YES
+    ML_Holdout_17     = NO
+    RPM_Interpolation = NO by default
+    RPM_Extrapolation = NO
+
+The 301 RPM interpolation rows are graph/analysis representation by default,
+not independent experiments.
+
+There are exactly zero intermediate-diameter rows.
+
+================================================================================
+16. PURPOSE OF STEP 5B / EDA
+================================================================================
+
+Before ML, inspect:
+
+    Graph_hc_hi
+    Graph_td_to
+    Graph_Vch
+    EDA_Summary
+    Response_Correlations
+    Holdout_Model_Check
+
+Questions for EDA:
+
+hc_hi:
+    How does normalized critical air-core height change with RPM?
+    How does it change with diameter?
+    Does it saturate?
+    Is there unusual behaviour near RPM=0?
+
+td_to:
+    How does normalized drainage time vary with RPM?
+    What is the diameter effect?
+    Is the curve approximately linear or nonlinear?
+
+Vch:
+    How does characteristic volume behave with RPM?
+    How strongly does it relate to hc_hi?
+    How strongly does it relate to td_to?
+
+Do not modify data merely because an EDA plot looks unusual.
+Use EDA to formulate hypotheses and later analysis.
+
+================================================================================
+17. FUTURE PIPELINE FROM THIS POINT
+================================================================================
+
+The intended continuation is:
+
+    STEP 6   = ML data preparation + leakage audit
+    STEP 7   = ML baseline regression
+    STEP 8   = ML cross-validation + model comparison/tuning
+    STEP 9   = Classical vs ML final continuous-model comparison
+    STEP 10  = Residual/error/robustness analysis
+    STEP 11  = Response characterization + sensitivity
+    STEP 12  = Engineering classification definition
+    STEP 13  = Classification modelling
+    STEP 14  = Explainable AI
+    STEP 15  = Decision-support framework
+    STEP 16  = Applicability / scenario / extrapolation analysis
+    STEP 17  = Final engineering validation
+    STEP 18  = Thesis / report / paper consolidation
+
+================================================================================
+18. STEP 6 — ML DATA PREPARATION / LEAKAGE AUDIT
+================================================================================
+
+STARTING FILE:
+
+    Step5B_Final_Analysis_Consolidated.xlsx
+
+Primary dataset:
+
+    ML_Train_67
+
+Inputs/features:
+
+    d
+    Rpm
+
+Targets:
+
+    hc_hi
+    td_to
+    Vch
+
+Point_ID:
+    Identifier only.
+    Do NOT use Point_ID as a model feature.
+
+Holdout:
+    ML_Holdout_17 remains untouched.
+
+First Step 6 checks:
+
+    Confirm 67 rows.
+    Confirm no duplicated Point_ID.
+    Confirm no duplicated (d,Rpm) coordinates.
+    Confirm no missing/nonfinite d/Rpm/targets.
+    Confirm only measured observations.
+    Confirm no interpolation/extrapolation rows are present.
+
+Feature matrix:
+
+    X = [d, Rpm]
+
+Target matrices:
+
+    y_hc = hc_hi
+    y_td = td_to
+    y_Vch = Vch
+
+Do not automatically create large polynomial feature sets.
+
+Scaling:
+
+    Scaling should be tested/used where needed for:
+        SVR
+        KNN
+        MLP
+        GPR
+
+Tree-based methods typically do not require scaling.
+
+Do not transform targets automatically.
+Only test a target transformation if EDA supports the need.
+
+Output of Step 6 should ideally include:
+
+    ML_Prepared_Train.xlsx
+
+or another clearly documented preparation workbook,
+plus a machine-readable dataset for Step 7.
+
+================================================================================
+19. STEP 7 — ML BASELINE REGRESSION
+================================================================================
+
+Candidate models:
+
+Tree-based:
+    Random Forest
+    Extra Trees
+    XGBoost
+
+Kernel/distance:
+    SVR
+    KNN Regressor
+
+Neural:
+    MLP Regressor
+
+Probabilistic:
+    Gaussian Process Regression
+
+Potential future/experimental:
+    Fuzzy regression
+    Genetic-fuzzy methods
+
+Do NOT make every possible method mandatory if the dataset is too small or a
+method is unstable.
+
+All models should use only ML_Train_67 for development.
+
+The 17 holdout observations remain isolated.
+
+================================================================================
+20. STEP 8 — ML CROSS-VALIDATION AND MODEL SELECTION
+================================================================================
+
+Recommended:
+    5-fold repeated cross-validation with fixed random seeds.
+
+Because there are only 67 observations, avoid:
+    one arbitrary random 80:20 split
+
+Metrics:
+    R²
+    RMSE
+    MAE
+    MSE
+    MAPE
+
+Also record:
+    mean CV score
+    standard deviation
+    prediction validity
+    physical violations
+    training time
+    model complexity where practical
+
+Important:
+    Different targets may use different ML algorithms.
+
+Do not select solely on R².
+
+For Vch:
+    Pay attention to zero values near RPM=0.
+    MAPE may be problematic near zero.
+    Do not let MAPE dominate model selection.
+
+For hc_hi and Vch:
+    enforce/monitor physical domain:
+        0 <= hc_hi <= 1
+        0 <= Vch <= 1
+
+For td_to:
+    td_to > 0
+
+Do not silently clip outputs during validation.
+
+================================================================================
+21. STEP 9 — CLASSICAL VS ML CONTINUOUS MODELS
+================================================================================
+
+Current classical baselines:
+
+    hc_hi → Cubic Griddata
+    td_to → 3rd-order RSM
+    Vch   → 3rd-order RSM
+
+After ML CV, compare each target's classical model against its selected ML
+candidate.
+
+Do not force one overall model winner across all targets.
+
+Possible final structure:
+
+    hc_hi:
+        classical baseline
+        ML selected model
+
+    td_to:
+        classical baseline
+        ML selected model
+
+    Vch:
+        classical baseline
+        ML selected model
+
+Holdout data can be used as an external benchmark after ML model development,
+but must not be used to tune the ML model.
+
+Because the holdout has already been used to evaluate the classical models,
+be transparent that a final holdout comparison is an external benchmark and
+not a fresh untouched dataset for a brand-new model family.
+
+================================================================================
+22. STEP 10 — RESIDUAL AND ROBUSTNESS ANALYSIS
+================================================================================
+
+For final candidate models:
+
+Plot:
+    Predicted vs Actual
+    Residual vs Predicted
+    Residual vs RPM
+    Residual vs d
+    Residual distribution
+
+Calculate error by:
+    diameter
+    RPM region
+
+RPM regions:
+    low = 0–80
+    medium = 100–180
+    high = 200–260
+
+Look for:
+    bias
+    heteroscedasticity
+    curvature
+    systematic diameter error
+    high-RPM degradation
+    low-RPM anomalies
+
+This is important because high aggregate R² can hide structured errors.
+
+================================================================================
+23. STEP 11 — RESPONSE CHARACTERIZATION AND SENSITIVITY
+================================================================================
+
+Analyze modelled response behaviour over the measured experimental domain:
+
+    d = 6,8,10,12,14,16
+    RPM = 0–260
+
+Do NOT create intermediate diameters.
+
+Recommended analyses:
+
+    Response vs RPM at each measured diameter
+    Response vs diameter at selected measured RPM levels
+    2D heatmaps on the measured-diameter/RPM domain
+    model-based sensitivity curves
+
+For ML:
+    permutation importance
+    partial dependence where appropriate
+    interaction analysis
+    SHAP later in the XAI stage
+
+Engineering questions:
+    Which response is most sensitive to RPM?
+    Which is most sensitive to diameter?
+    Are there nonlinear interactions?
+    Are model trends consistent with experiments?
+
+================================================================================
+24. STEP 12 — ENGINEERING CLASSIFICATION DEFINITION
+================================================================================
+
+Do NOT invent arbitrary “weak/medium/strong” labels.
+
+Classification must be based on a defensible engineering rule.
+
+Possible directions to investigate:
+
+A) Vch-based classification
+    Since Vch combines critical air-core height and blockage.
+
+B) Multi-response classification
+    Use:
+        hc_hi
+        td_to
+        Vch
+
+C) Data-driven clustering
+    Discover regimes first, then interpret engineering meaning.
+
+Important:
+    Classification comes AFTER the continuous regression work.
+
+Do not define labels merely because a classifier requires labels.
+
+================================================================================
+25. STEP 13 — CLASSIFICATION MODELLING
+================================================================================
+
+Potential models:
+
+    Decision Tree
+    Random Forest
+    XGBoost
+    SVM
+    KNN
+    MLP
+
+Metrics:
+
+    Accuracy
+    Precision
+    Recall
+    F1
+    Confusion Matrix
+    ROC-AUC where appropriate
+
+Need to evaluate class imbalance.
+
+Do not select a classifier using accuracy alone.
+
+================================================================================
+26. STEP 14 — EXPLAINABLE AI
+================================================================================
+
+For regression:
+    SHAP
+    permutation importance
+    partial dependence
+
+For classification:
+    SHAP
+    feature importance
+    decision-boundary interpretation
+
+Questions:
+
+    Is RPM more important than diameter?
+    Are interactions important?
+    Do nonlinear effects make physical sense?
+    Does the model agree with observed experimental trends?
+    What input conditions are associated with transitions between classes?
+
+XAI should explain validated models, not unstable or unsupported models.
+
+================================================================================
+27. STEP 15 — DECISION-SUPPORT SYSTEM
+================================================================================
+
+Potential inputs:
+
+    Port diameter
+    RPM
+
+Potential outputs:
+
+    Predicted hc_hi
+    Predicted td_to
+    Predicted Vch
+    Air-core class
+    Applicability status
+    Validity/diagnostic status
+
+The DSS must not always return a number.
+
+It should distinguish:
+
+    VALID
+    OUTSIDE_TRAINING_CONVEX_HULL
+    PHYSICAL_VIOLATION
+    INTERPOLATION
+    RPM_EXTRAPOLATION
+    OUTSIDE_MODEL_APPLICABILITY
+
+For hc_hi:
+    Cubic Griddata is convex-hull limited.
+
+For Vch:
+    model can produce a physically invalid negative prediction.
+    This must be flagged, not clipped silently.
+
+================================================================================
+28. STEP 16 — APPLICABILITY / EXTRAPOLATION / SCENARIO ANALYSIS
+================================================================================
+
+Current evidence:
+
+    hc_hi:
+        no validated high-RPM extrapolation
+
+    td_to:
+        provisional RPM-only high-RPM extrapolation using 3rd-order RPM polynomial
+
+    Vch:
+        no validated high-RPM extrapolation
+
+Therefore:
+    Do not automatically produce a complete “final” 280–320 RPM dataset for all
+    three responses.
+
+Diameter extrapolation:
+
+    d=4 and d=18 mm
+
+This was originally considered, but has NOT been scientifically validated in
+the revised RPM-only pipeline.
+
+Treat diameter extrapolation as a separate research problem.
+
+Do not perform it automatically just because it was in an older script.
+
+================================================================================
+29. STEP 17 — FINAL ENGINEERING VALIDATION
+================================================================================
+
+Final validation matrix should contain, for each response:
+
+    model
+    training CV
+    in-range interpolation validation
+    independent holdout
+    extrapolation validation
+    physical validity
+    residual diagnostics
+    applicability domain
+    known limitations
+
+Example current evidence:
+
+hc_hi:
+    in-range model:
+        Cubic Griddata
+    holdout:
+        R² 0.999241
+        16/17 valid
+        one unavailable
+    extrapolation:
+        NOT VALIDATED
+    applicability:
+        convex-hull limited
+
+td_to:
+    in-range model:
+        3rd-order RSM
+    holdout:
+        R² 0.988930
+        17/17 valid
+        zero physical violations
+    extrapolation:
+        provisional RPM-only model
+    applicability:
+        needs extrapolation caution
+
+Vch:
+    in-range model:
+        3rd-order RSM
+    holdout:
+        R² 0.987744
+        17/17 valid
+        one physical violation
+    extrapolation:
+        NOT VALIDATED
+    applicability:
+        monitor physical boundary
+
+================================================================================
+30. STEP 18 — THESIS / REPORT STRUCTURE
+================================================================================
+
+Suggested organization:
+
+Chapter 1:
+    Introduction and problem motivation
+
+Chapter 2:
+    Experimental system, source data, variables, source-paper methodology
+
+Chapter 3:
+    Data validation and leakage-safe experimental split
+
+Chapter 4:
+    Classical model selection, interpolation, extrapolation, holdout validation
+
+Chapter 5:
+    EDA and response characterization
+
+Chapter 6:
+    ML regression
+
+Chapter 7:
+    Classification
+
+Chapter 8:
+    Explainable AI
+
+Chapter 9:
+    Decision-support framework
+
+Chapter 10:
+    Applicability, limitations, extrapolation analysis
+
+Chapter 11:
+    Conclusions and future work
+
+================================================================================
+31. IMPORTANT OLD-BRANCH INFORMATION
+================================================================================
+
+There was an older modelling branch that used targets such as:
+    hc
+    A
+    Vmin
+
+That branch is historical only.
+
+The old branch included a Step 5A analysis showing that recorded Vmin was not
+numerically equivalent to A*hc.
+
+That old target formulation is SUPERSEDED by the source-corrected revised
+formulation using:
+    hc_hi
+    td_to
+    Vch
+
+Do not accidentally bring the old Vmin logic back into the revised pipeline.
+
+Old Step 3/4 branches involving intermediate diameters and global extrapolation
+are also historical/superseded.
+
+PRIMARY CONTINUATION BRANCH:
+    STEP1_REVISED
+
+================================================================================
+32. CODING STYLE / PRACTICAL PREFERENCES
+================================================================================
+
+User preferences:
+
+    Code should be simple and minimal.
+    Prefer no unnecessary comments.
+    Avoid lambda where possible.
+    Use clear script numbering.
+    Use pathlib.
+    Use BASE_DIR = Path(__file__).resolve().parent.
+    Preserve exact filenames and column names.
+    Keep outputs in the same project folder.
+    Prefer Excel outputs with clear sheet names.
+    Use reproducible fixed random seeds in ML.
+    Keep provenance visible.
+
+User typically runs scripts using:
+
+    & C:\Python314\python.exe d:/Projects/clg_final_yr/STEP1_REVISED/<script>.py
+
+When creating a new step:
+    create the script
+    provide the file link
+    give the exact PowerShell command
+    specify expected output workbook
+    explain exactly what is locked and what remains provisional
+
+================================================================================
+33. WHAT THE NEXT PERSON SHOULD NOT DO
+================================================================================
+
+DO NOT:
+
+    - overwrite Step5B_Final_Analysis_Consolidated.xlsx
+    - mix Test_Holdout into ML training
+    - train ML on all 301 interpolation rows by default
+    - call interpolation points “experimental data”
+    - call extrapolation points “experimental data”
+    - interpolate across unmeasured diameters
+    - use d=7,9,11,13,15 unless the project scope is explicitly changed
+    - use d=4,18 as validated points
+    - treat 280–320 RPM as experimentally validated
+    - clip invalid model predictions without reporting them
+    - replace Point 71 with a synthetic correction
+    - force hc_hi at RPM=0 to zero
+    - rename td_to
+    - reselect models using the 17-point holdout
+    - rely on R² alone
+    - claim causal relationships from correlations
+    - invent classification thresholds
+
+================================================================================
+34. CURRENT FINAL STATE AT HANDOFF
+================================================================================
+
+DATA:
+
+    84 measured observations
+    6 measured diameters
+    14 measured RPM levels
+    67 Train_Anchors
+    17 Test_Holdout
+
+CURRENT CLASSICAL IN-RANGE MODELS:
+
+    hc_hi:
+        Cubic Griddata
+
+    td_to:
+        3rd-order RSM
+
+    Vch:
+        3rd-order RSM
+
+HOLDOUT PERFORMANCE:
+
+    hc_hi:
+        R² 0.999241
+        RMSE 0.008159
+        MAE 0.006185
+        Coverage 94.117647%
+        One unavailable prediction
+        Point_ID 71, d=6, RPM=0
+
+    td_to:
+        R² 0.988930
+        RMSE 0.099547
+        MAE 0.072097
+        Coverage 100%
+        Physical violations 0
+
+    Vch:
+        R² 0.987744
+        RMSE 0.011738
+        MAE 0.008761
+        Coverage 100%
+        Point_ID 71 predicted -0.033295 at d=6, RPM=0
+
+CROSS-RESPONSE CORRELATION:
+
+    hc_hi vs td_to:
+        Pearson 0.419944
+        Spearman 0.259945
+
+    hc_hi vs Vch:
+        Pearson 0.813394
+        Spearman 0.677183
+
+    td_to vs Vch:
+        Pearson 0.828596
+        Spearman 0.835985
+
+RPM EXTRAPOLATION:
+
+    hc_hi:
+        unsupported
+
+    td_to:
+        provisional 3rd-order RPM polynomial
+
+    Vch:
+        unsupported
+
+CONSOLIDATED WORKBOOK:
+
+    Step5B_Final_Analysis_Consolidated.xlsx
+
+ML DEFAULT TRAINING SET:
+
+    ML_Train_67
+
+ML DEFAULT HOLDOUT:
+
+    ML_Holdout_17
+
+GRAPH/EDA DATA:
+
+    RPM_Interpolation_301
+    Graph_hc_hi
+    Graph_td_to
+    Graph_Vch
+
+================================================================================
+35. IMMEDIATE NEXT TASK
+================================================================================
+
+NEXT STEP:
+
+    STEP 6 — ML DATA PREPARATION + LEAKAGE AUDIT
+
+INPUT:
+
+    Step5B_Final_Analysis_Consolidated.xlsx
+
+PRIMARY SOURCE SHEET:
+
+    ML_Train_67
+
+FEATURES:
+
+    d
+    Rpm
+
+TARGETS:
+
+    hc_hi
+    td_to
+    Vch
+
+IDENTIFIER:
+
+    Point_ID
+
+HOLDOUT:
+
+    ML_Holdout_17
+    DO NOT USE FOR MODEL SELECTION
+
+STEP 6 SHOULD PRODUCE:
+
+    - verified ML training matrix
+    - leakage audit
+    - missing/nonfinite audit
+    - duplicate audit
+    - feature statistics
+    - target statistics
+    - scaling plan
+    - ML-ready dataset
+    - clear documentation of what is excluded
+
+After Step 6:
+    proceed to Step 7 ML baseline regression.
+
+================================================================================
+36. HANDOFF INSTRUCTION
+================================================================================
+
+Treat this document as the authoritative continuation context for the
+REVISED branch.
+
+When in doubt, prefer:
+    Step1_REVISED
+over:
+    STEP1_NEW / old branches
+
+Prefer:
+    measured data
+over:
+    interpolation
+over:
+    extrapolation
+
+Use:
+    td_to
+
+Never:
+    td/to
+
+Do not silently change model choices, target definitions, split membership, or
+data provenance.
+
+The project is now ready to begin controlled ML development, with the
+consolidated Step5B workbook serving as the central pre-ML analysis artifact.
