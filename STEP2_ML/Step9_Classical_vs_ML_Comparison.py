@@ -221,29 +221,38 @@ p71_mask = holdout[ID_COL] == 71
 et_p71_vch_pred = float(et_vch_ho_pred[p71_mask][0])
 et_p71_vch_res = float(y_ho_vch_true[p71_mask][0] - et_p71_vch_pred)
 
-vch_xgb_row = ml_final_models[ml_final_models["Target"] == "Vch"].iloc[0]
-vch_xgb_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_pred"].values[0])
-vch_xgb_p71_res = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_res"].values[0])
+vch_locked_row = ml_final_models[ml_final_models["Target"] == "Vch"].iloc[0]
+vch_locked_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_pred"].values[0])
+vch_locked_p71_res = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_res"].values[0])
 vch_rsm_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_classical_pred"].values[0])
 
 # Get CV stats for ET from CV_Best_Per_Family
 et_cv_row = ml_best_per_fam[(ml_best_per_fam["Target"] == "Vch") & (ml_best_per_fam["Family"] == "ExtraTrees")].iloc[0]
 
+vch_locked_notes = (
+    f"Officially selected by CV criteria ({vch_locked_row['Selected_Family']}). "
+    f"Holdout R2={vch_locked_row['Holdout_R2']:.6f}, RMSE={vch_locked_row['Holdout_RMSE']:.6f}. "
+)
+if int(vch_locked_row["Holdout_Physical_Violations"]) > 0:
+    vch_locked_notes += f"Negative volume ({vch_locked_p71_pred:.6f}) at Point 71 documented as a known boundary limitation."
+else:
+    vch_locked_notes += f"Zero physical violations on holdout (Point 71 = {vch_locked_p71_pred:+.6f}). Fully physically compliant."
+
 diag_vch_df = pd.DataFrame([
     {
-        "Model": "XGBoost (XGB_n200_d2_lr0.05)",
+        "Model": f"{vch_locked_row['Selected_Family']} ({vch_locked_row['Selected_Config']})",
         "Role_in_Pipeline": "OFFICIALLY LOCKED (Step 8 CV Champion)",
-        "CV_R2_mean": vch_xgb_row["CV_R2_mean"],
-        "CV_RMSE_mean": vch_xgb_row["CV_RMSE_mean"],
-        "CV_Physical_Violations": int(vch_xgb_row["CV_Physical_Violations_Total"]),
-        "Holdout_R2": vch_xgb_row["Holdout_R2"],
-        "Holdout_RMSE": vch_xgb_row["Holdout_RMSE"],
-        "Holdout_MAE": vch_xgb_row["Holdout_MAE"],
-        "Holdout_MAPE": vch_xgb_row["Holdout_MAPE"],
-        "Holdout_Physical_Violations": int(vch_xgb_row["Holdout_Physical_Violations"]),
-        "Point_71_Predicted_Vch": vch_xgb_p71_pred,
-        "Point_71_Residual": vch_xgb_p71_res,
-        "Status_and_Notes": "Officially selected by CV criteria. Lower RMSE on holdout. Negative volume (-0.018760) at Point 71 documented as a known boundary limitation.",
+        "CV_R2_mean": vch_locked_row["CV_R2_mean"],
+        "CV_RMSE_mean": vch_locked_row["CV_RMSE_mean"],
+        "CV_Physical_Violations": int(vch_locked_row["CV_Physical_Violations_Total"]),
+        "Holdout_R2": vch_locked_row["Holdout_R2"],
+        "Holdout_RMSE": vch_locked_row["Holdout_RMSE"],
+        "Holdout_MAE": vch_locked_row["Holdout_MAE"],
+        "Holdout_MAPE": vch_locked_row["Holdout_MAPE"],
+        "Holdout_Physical_Violations": int(vch_locked_row["Holdout_Physical_Violations"]),
+        "Point_71_Predicted_Vch": vch_locked_p71_pred,
+        "Point_71_Residual": vch_locked_p71_res,
+        "Status_and_Notes": vch_locked_notes,
     },
     {
         "Model": "ExtraTrees (ET_n200_dNone_l1)",
@@ -258,7 +267,7 @@ diag_vch_df = pd.DataFrame([
         "Holdout_Physical_Violations": et_vch_ho_viol,
         "Point_71_Predicted_Vch": et_p71_vch_pred,
         "Point_71_Residual": et_p71_vch_res,
-        "Status_and_Notes": "Evaluated post-hoc for diagnostic comparison only. Inherently non-negative (0 violations on holdout, Point 71 = +0.000197) but not selected because XGBoost won CV-only ranking.",
+        "Status_and_Notes": "Evaluated post-hoc for diagnostic comparison only. Inherently non-negative (0 violations on holdout, Point 71 = +0.000197) but not selected because rank-1 model won CV ranking.",
     },
     {
         "Model": "3rd-order RSM (Classical)",
@@ -308,6 +317,23 @@ c_vch = classical_metrics["Vch"]
 m_vch = ml_final_models[ml_final_models["Target"] == "Vch"].iloc[0]
 vch_rmse_pct_red = ((c_vch["Holdout_RMSE"] - m_vch["Holdout_RMSE"]) / c_vch["Holdout_RMSE"]) * 100.0
 
+vch_has_viol = int(m_vch["Holdout_Physical_Violations"]) > 0
+vch_limitation = (
+    f"Predicts negative volume at Point 71 (d=6, RPM=0) with Vch = {vch_p71_pred:.6f} (undershoot of {vch_p71_undershoot:.6f}), first revealed on holdout; documented honestly as a known boundary limitation."
+    if vch_has_viol else
+    "Tree-based step boundaries instead of perfectly continuous analytical derivatives; non-negative everywhere on holdout."
+)
+vch_recommendation = (
+    f"{m_vch['Selected_Family']} ({m_vch['Selected_Config']}) officially locked per Step 8 CV-only selection; Point 71 negative prediction is flagged as a known limitation without silent clipping or holdout reselection."
+    if vch_has_viol else
+    f"{m_vch['Selected_Family']} ({m_vch['Selected_Config']}) officially locked per Step 8 CV-only selection with stability gate (CoeffVar<30%); achieves 100% domain coverage and 0 physical violations on both CV and holdout."
+)
+vch_verdict = (
+    f"KNOWN LIMITATION ({int(m_vch['Holdout_Physical_Violations'])} holdout violation at Point 71: {vch_p71_pred:.6f})"
+    if vch_has_viol else
+    f"PASS ({int(m_vch['Holdout_Physical_Violations'])} violations)"
+)
+
 decisions = [
     {
         "Response": "hc_hi",
@@ -338,9 +364,9 @@ decisions = [
         "Key_Strength_Classical": f"Captures overall volume growth trend with Holdout R2={c_vch['Holdout_R2']:.4f}, RMSE={c_vch['Holdout_RMSE']:.6f}.",
         "Key_Limitation_Classical": f"Violates lower physical boundary at Point 71 (d=6, RPM=0) predicting negative volume ({vch_rsm_p71_pred:.6f}).",
         "Key_Strength_ML": f"Achieves {vch_rmse_pct_red:.2f}% RMSE reduction over 3rd-order RSM ({c_vch['Holdout_RMSE']:.6f} -> {m_vch['Holdout_RMSE']:.6f}); Holdout R2={m_vch['Holdout_R2']:.4f}, MAE={m_vch['Holdout_MAE']:.6f}; 0 violations on CV.",
-        "Key_Limitation_ML": f"Predicts negative volume at Point 71 (d=6, RPM=0) with Vch = {vch_p71_pred:.6f} (undershoot of {vch_p71_undershoot:.6f}), first revealed on holdout; documented honestly as a known boundary limitation.",
-        "Recommended_Model_for_Pipeline": f"{m_vch['Selected_Family']} ({m_vch['Selected_Config']}) officially locked per Step 8 CV-only selection; Point 71 negative prediction is flagged as a known limitation without silent clipping or holdout reselection.",
-        "Physical_Validity_Verdict": f"KNOWN LIMITATION ({int(m_vch['Holdout_Physical_Violations'])} holdout violation at Point 71: {vch_p71_pred:.6f})",
+        "Key_Limitation_ML": vch_limitation,
+        "Recommended_Model_for_Pipeline": vch_recommendation,
+        "Physical_Validity_Verdict": vch_verdict,
     },
 ]
 
