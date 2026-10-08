@@ -4,18 +4,6 @@ Revised: Stability gate + memorization check (from Step 10 diagnostics)
 
 Input : Step6_ML_Data_Preparation.xlsx  (ML_Train_67, ML_Holdout_17)
 Output: Step8_ML_Model_Selection_Tuning.xlsx
-
-REVISION NOTES:
-  Previous hc_hi selection (ET_n200_dNone_l1) rejected by Step 10 diagnostics:
-    - Train R2 = 1.000000 (RMSE ~ 1e-15): complete memorization of 67 points
-    - CV RMSE CoeffVar = 57.2% across 15 folds: UNSTABLE
-    - Root cause: min_samples_leaf=1, max_depth=None -> leaf-per-point memorization
-
-  Fixes applied:
-    1. Stability gate: CV RMSE CoeffVar >= 30% demotes config in ranking
-    2. ExtraTrees grid expanded: leaf in {1,2,3,5,8}, depth in {None,4,5,6,8,12}
-    3. Memorization check: tree-based configs with full-train R2 > 0.999 rejected
-    4. New hierarchy: violations -> stability (CoeffVar<30%) -> RMSE -> MAE -> R2
 """
 
 from pathlib import Path
