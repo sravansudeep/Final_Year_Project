@@ -1,6 +1,6 @@
 """
 Step 7 — ML Baseline Regression
-Input : Step6_ML_Data_Preparation.xlsx  (ML_Train_67, ML_Holdout_17)
+Input : Step6_ML_Data_Preparation.xlsx  (ML_Train_315, ML_Holdout_17)
 Output: Step7_ML_Baseline_Regression.xlsx
 """
 
@@ -42,10 +42,10 @@ SEED = 42
 N_SPLITS = 5
 N_REPEATS = 3
 
-# ---------------------------------------------------------------------------
-# 1. Load data
-# ---------------------------------------------------------------------------
-train = pd.read_excel(INPUT_FILE, sheet_name="ML_Train_67")
+
+xl_in = pd.ExcelFile(INPUT_FILE)
+train_sheet_name = [s for s in xl_in.sheet_names if s.startswith("ML_Train_")][0]
+train = pd.read_excel(INPUT_FILE, sheet_name=train_sheet_name)
 holdout = pd.read_excel(INPUT_FILE, sheet_name="ML_Holdout_17")
 
 X_train = train[FEATURES].values
@@ -57,9 +57,9 @@ y_holdout = {t: holdout[t].values for t in TARGETS}
 print(f"Training set : {X_train.shape[0]} rows, {X_train.shape[1]} features")
 print(f"Holdout set  : {X_holdout.shape[0]} rows (locked - not used for selection)")
 
-# ---------------------------------------------------------------------------
+
 # 2. Define candidate models
-# ---------------------------------------------------------------------------
+
 def get_models(seed):
     tree_models = {
         "RandomForest": RandomForestRegressor(
@@ -118,9 +118,9 @@ def count_physical_violations(y_pred, target):
     return int(((y_pred < lo) | (y_pred > hi)).sum())
 
 
-# ---------------------------------------------------------------------------
+
 # 3. Run repeated k-fold CV for each target × model
-# ---------------------------------------------------------------------------
+
 rkf = RepeatedKFold(n_splits=N_SPLITS, n_repeats=N_REPEATS, random_state=SEED)
 
 all_cv_results = []
@@ -224,9 +224,9 @@ for target in TARGETS:
 cv_df = pd.DataFrame(all_cv_results)
 fold_df = pd.DataFrame(fold_details)
 
-# ---------------------------------------------------------------------------
+
 # 4. Rank models per target
-# ---------------------------------------------------------------------------
+
 rankings = []
 for target in TARGETS:
     sub = cv_df[cv_df["Target"] == target].copy()
@@ -250,9 +250,9 @@ for target in TARGETS:
               f"R2={row['CV_R2_mean']:.4f}+/-{row['CV_R2_std']:.4f}  "
               f"RMSE={row['CV_RMSE_mean']:.6f}  violations={int(row['CV_Physical_Violations_Total'])}")
 
-# ---------------------------------------------------------------------------
+
 # 5. Retrain best model per target on full training set & predict holdout
-# ---------------------------------------------------------------------------
+
 print(f"\n{'='*60}")
 print("HOLDOUT EVALUATION (retrained on full ML_Train_67)")
 print(f"{'='*60}")
@@ -302,9 +302,9 @@ for target in TARGETS:
 
 holdout_summary_df = pd.DataFrame(holdout_results)
 
-# ---------------------------------------------------------------------------
-# 6. Full training set predictions (for diagnostics)
-# ---------------------------------------------------------------------------
+
+# 6. Full training set predictions
+
 train_preds = train[[ID_COL, "d", "Rpm"]].copy()
 for target in TARGETS:
     best_name = ranking_df[ranking_df["Target"] == target].iloc[0]["Model"]
@@ -316,9 +316,9 @@ for target in TARGETS:
     train_preds[f"{target}_residual"] = y_train[target] - y_pred_full
     train_preds[f"{target}_model"] = best_name
 
-# ---------------------------------------------------------------------------
+
 # 7. Write output workbook
-# ---------------------------------------------------------------------------
+
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
 
     readme = pd.DataFrame({
@@ -342,7 +342,7 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             SEED,
             "d, Rpm",
             "hc_hi, td_to, Vch",
-            67, 17,
+            315, 17,
             "RandomForest, ExtraTrees, XGBoost, SVR, KNN, MLP, GPR",
             "Physical violations (asc) → RMSE (asc) → MAE (asc)",
             "Holdout used only for benchmark evaluation, NOT for model selection",

@@ -2,7 +2,7 @@
 Step 8 -- ML Cross-Validation & Model Selection / Tuning
 Revised: Stability gate + memorization check (from Step 10 diagnostics)
 
-Input : Step6_ML_Data_Preparation.xlsx  (ML_Train_67, ML_Holdout_17)
+Input : Step6_ML_Data_Preparation.xlsx  (ML_Train_315, ML_Holdout_17)
 Output: Step8_ML_Model_Selection_Tuning.xlsx
 """
 
@@ -47,14 +47,15 @@ N_SPLITS = 5
 N_REPEATS = 3
 
 STABILITY_THRESHOLD = 30.0
-MEMORIZATION_R2_THRESHOLD = 0.999
+MEMORIZATION_R2_THRESHOLD = 0.995
 TREE_FAMILIES = {"RandomForest", "ExtraTrees", "XGBoost"}
 MAX_MEMORIZATION_CANDIDATES = 50
+EXCLUDE_FAMILIES = set()
 
-# ---------------------------------------------------------------------------
-# 1. Load data
-# ---------------------------------------------------------------------------
-train = pd.read_excel(INPUT_FILE, sheet_name="ML_Train_67")
+
+xl_in = pd.ExcelFile(INPUT_FILE)
+train_sheet_name = [s for s in xl_in.sheet_names if s.startswith("ML_Train_")][0]
+train = pd.read_excel(INPUT_FILE, sheet_name=train_sheet_name)
 holdout = pd.read_excel(INPUT_FILE, sheet_name="ML_Holdout_17")
 
 X_train = train[FEATURES].values
@@ -79,10 +80,9 @@ def count_physical_violations(y_pred, target):
     return int(((y_pred < lo) | (y_pred > hi)).sum())
 
 
-# ---------------------------------------------------------------------------
+
 # 2. Define candidate model tuning space
-#    ExtraTrees grid EXPANDED with regularization configs (from 12 -> 60)
-# ---------------------------------------------------------------------------
+
 def get_candidate_configurations(seed):
     configs = []
 
@@ -99,12 +99,9 @@ def get_candidate_configurations(seed):
                     "n_estimators": n_est, "max_depth": str(depth), "min_samples_leaf": leaf
                 }))
 
-    # --- Extra Trees (60 configs, EXPANDED regularization grid) ---
-    # Original: depth in {None,4,6}, leaf in {1,2} = 12 configs
-    # Expanded: depth in {None,4,5,6,8,12}, leaf in {1,2,3,5,8} = 60 configs
-    # Motivated by Step 10 diagnosis: ET_n200_dNone_l1 memorizes (Train R2=1.0)
+    # --- Extra Trees (50 configs) ---
     for n_est in [100, 200]:
-        for depth in [None, 4, 5, 6, 8, 12]:
+        for depth in [None, 4, 5, 6, 8]:
             for leaf in [1, 2, 3, 5, 8]:
                 name = f"ET_n{n_est}_d{depth}_l{leaf}"
                 model = ExtraTreesRegressor(
@@ -156,21 +153,20 @@ def get_candidate_configurations(seed):
                     "n_neighbors": k, "weights": weights, "p": p
                 }))
 
-    # --- GPR (StandardScaler + GPR: 8 configs) ---
+    # --- GPR (StandardScaler + GPR)
     gpr_kernels = [
         ("Matern25", ConstantKernel(1.0, (1e-2, 1e3)) * Matern(length_scale=1.0, nu=2.5) + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e-1))),
         ("Matern15", ConstantKernel(1.0, (1e-2, 1e3)) * Matern(length_scale=1.0, nu=1.5) + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e-1))),
         ("RBF", ConstantKernel(1.0, (1e-2, 1e3)) * RBF(length_scale=1.0) + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e-1))),
-        ("RQ", ConstantKernel(1.0, (1e-2, 1e3)) * RationalQuadratic(length_scale=1.0, alpha=1.0) + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e-1))),
     ]
     for kname, kernel in gpr_kernels:
-        for alpha_val in [1e-10, 1e-5]:
+        for alpha_val in [1e-10, 1e-3]:
             name = f"GPR_{kname}_a{alpha_val}"
             pipe = Pipeline([
                 ("scaler", StandardScaler()),
                 ("gpr", GaussianProcessRegressor(
                     kernel=kernel, alpha=alpha_val,
-                    n_restarts_optimizer=3, random_state=seed, normalize_y=True
+                    n_restarts_optimizer=0, random_state=seed, normalize_y=True
                 ))
             ])
             configs.append(("GPR", name, pipe, {
@@ -195,12 +191,13 @@ def get_candidate_configurations(seed):
                     "hidden_layer_sizes": str(arch), "activation": act, "alpha": alpha_val
                 }))
 
+    configs = [c for c in configs if c[0] not in EXCLUDE_FAMILIES]
     return configs
 
 
-# ---------------------------------------------------------------------------
+
 # 3. Repeated 5-fold CV evaluation
-# ---------------------------------------------------------------------------
+
 rkf = RepeatedKFold(n_splits=N_SPLITS, n_repeats=N_REPEATS, random_state=SEED)
 
 all_configs = get_candidate_configurations(SEED)
@@ -314,10 +311,10 @@ for target in TARGETS:
 
 cv_df = pd.DataFrame(all_cv_results)
 
-# ---------------------------------------------------------------------------
+
 # 4. Rank configurations per target (WITH STABILITY GATE)
 #    Hierarchy: violations -> stability -> RMSE -> MAE -> R2
-# ---------------------------------------------------------------------------
+
 rankings = []
 for target in TARGETS:
     sub = cv_df[cv_df["Target"] == target].copy()
@@ -339,67 +336,9 @@ for target in TARGETS:
     print(f"\n  {target}: {n_stable}/{n_total} configs pass stability gate (<{STABILITY_THRESHOLD}% CoeffVar)")
     print(f"    Rank-1 config: {top_config['Config_Name']} ({top_config['Family']}) [{'STABLE' if top_config['Stability_Rank']==0 else 'UNSTABLE'}]")
 
-# ---------------------------------------------------------------------------
-# 5. Extract Best-Per-Family
-# ---------------------------------------------------------------------------
-best_per_family_list = []
-for target in TARGETS:
-    for fam in ["RandomForest", "ExtraTrees", "XGBoost", "SVR", "KNN", "GPR", "MLP"]:
-        fam_sub = ranking_df[(ranking_df["Target"] == target) & (ranking_df["Family"] == fam)]
-        if not fam_sub.empty:
-            fam_best = fam_sub.sort_values(
-                by=["CV_Physical_Violations_Total", "Stability_Rank", "CV_RMSE_mean", "CV_MAE_mean"],
-                ascending=[True, True, True, True]
-            ).iloc[0]
-            best_per_family_list.append(fam_best)
 
-best_per_family_df = pd.DataFrame(best_per_family_list)
+# 5. Retrain Final Selected Models & Evaluate on Locked Holdout
 
-# ---------------------------------------------------------------------------
-# 6. Baseline (Step 7) vs Tuned (Step 8) comparison
-# ---------------------------------------------------------------------------
-step7_cv = pd.read_excel(STEP7_FILE, sheet_name="CV_Rankings")
-
-baseline_vs_tuned = []
-for target in TARGETS:
-    base_sub = step7_cv[step7_cv["Target"] == target]
-    tuned_sub = best_per_family_df[best_per_family_df["Target"] == target]
-
-    for fam in ["RandomForest", "ExtraTrees", "XGBoost", "SVR", "KNN", "GPR", "MLP"]:
-        b_row = base_sub[base_sub["Model"] == fam]
-        t_row = tuned_sub[tuned_sub["Family"] == fam]
-
-        if not b_row.empty and not t_row.empty:
-            b = b_row.iloc[0]
-            t = t_row.iloc[0]
-
-            rmse_diff = t["CV_RMSE_mean"] - b["CV_RMSE_mean"]
-            rmse_pct_change = (rmse_diff / b["CV_RMSE_mean"]) * 100
-            r2_diff = t["CV_R2_mean"] - b["CV_R2_mean"]
-            viol_diff = t["CV_Physical_Violations_Total"] - b["CV_Physical_Violations_Total"]
-
-            baseline_vs_tuned.append({
-                "Target": target,
-                "Family": fam,
-                "Tuned_Config": t["Config_Name"],
-                "Baseline_CV_RMSE": b["CV_RMSE_mean"],
-                "Tuned_CV_RMSE": t["CV_RMSE_mean"],
-                "RMSE_Change": rmse_diff,
-                "RMSE_Pct_Change": rmse_pct_change,
-                "Baseline_CV_R2": b["CV_R2_mean"],
-                "Tuned_CV_R2": t["CV_R2_mean"],
-                "R2_Change": r2_diff,
-                "Baseline_Violations": int(b["CV_Physical_Violations_Total"]),
-                "Tuned_Violations": int(t["CV_Physical_Violations_Total"]),
-                "Violations_Change": int(viol_diff),
-            })
-
-baseline_vs_tuned_df = pd.DataFrame(baseline_vs_tuned)
-
-# ---------------------------------------------------------------------------
-# 7. Retrain Final Selected Models & Evaluate on Locked Holdout
-#    WITH MEMORIZATION CHECK for tree-based models
-# ---------------------------------------------------------------------------
 print(f"\n{'='*70}")
 print("FINAL SELECTED TUNED MODELS & HOLDOUT EVALUATION")
 print(f"  Stability gate:    CoeffVar < {STABILITY_THRESHOLD}%")
@@ -411,7 +350,6 @@ config_dict = {cfg[1]: cfg[2] for cfg in all_configs}
 final_selected = []
 holdout_predictions = holdout[[ID_COL, "d", "Rpm"]].copy()
 train_predictions = train[[ID_COL, "d", "Rpm"]].copy()
-audit_rows = []
 
 for target in TARGETS:
     candidates = ranking_df[ranking_df["Target"] == target].copy()
@@ -524,77 +462,45 @@ for target in TARGETS:
     train_predictions[f"{target}_residual"] = y_tr_true - y_tr_pred_full
     train_predictions[f"{target}_model"] = selected_row["Config_Name"]
 
-    for rej in memorization_rejected:
-        audit_rows.append({
-            "Target": target,
-            "Candidate_Family": rej["Family"],
-            "Config_Name": rej["Config"],
-            "CV_RMSE_mean": rej["CV_RMSE_mean"],
-            "CV_RMSE_CoeffVar_Pct": rej["CV_RMSE_CoeffVar"],
-            "Stability_Status": rej["Stability"],
-            "Audit_Action": "Rejected (Memorization)",
-            "Reason": rej["Rejection_Reason"],
-            "Audit_Notes": f"Tree model Train R2={rej['Train_R2']:.6f} exceeded {MEMORIZATION_R2_THRESHOLD} threshold",
-        })
-
 final_selected_df = pd.DataFrame(final_selected)
 
-# ---------------------------------------------------------------------------
-# Populate Stability_Audit sheet with all candidate families excluded or demoted
-# ---------------------------------------------------------------------------
+
+# 6. Baseline (Step 7) vs Tuned (Step 8) comparison
+
+step7_cv = pd.read_excel(STEP7_FILE, sheet_name="CV_Rankings")
+baseline_vs_tuned = []
 for target in TARGETS:
-    target_bpf = best_per_family_df[best_per_family_df["Target"] == target]
-    target_selected = final_selected_df[final_selected_df["Target"] == target].iloc[0]
-    selected_fam = target_selected["Selected_Family"]
+    base_sub = step7_cv[step7_cv["Target"] == target]
+    t_row = final_selected_df[final_selected_df["Target"] == target].iloc[0]
 
-    for _, b_row in target_bpf.iterrows():
-        fam = b_row["Family"]
-        coeff_var = b_row["CV_RMSE_CoeffVar"]
-        rmse_val = b_row["CV_RMSE_mean"]
-        cfg_name = b_row["Config_Name"]
-        stab_str = "STABLE" if b_row["Stability_Rank"] == 0 else "UNSTABLE"
+    if not base_sub.empty:
+        b_row = base_sub.iloc[0]
+        rmse_diff = t_row["CV_RMSE_mean"] - b_row["CV_RMSE_mean"]
+        rmse_pct_change = (rmse_diff / b_row["CV_RMSE_mean"]) * 100
+        r2_diff = t_row["CV_R2_mean"] - b_row["CV_R2_mean"]
+        viol_diff = t_row["CV_Physical_Violations_Total"] - b_row["CV_Physical_Violations_Total"]
 
-        if coeff_var >= STABILITY_THRESHOLD:
-            if target == "td_to":
-                if fam == selected_fam:
-                    action = "Retained as best-available (Rank 1 overall)"
-                else:
-                    action = "Demoted / Excluded from selection"
-                notes = (
-                    "No candidate family passes the 30% stability gate (range: 41.7%-58.0%); "
-                    "SVR retained as best-available with documented caveat."
-                )
-            elif target == "hc_hi":
-                action = "Demoted / Excluded from selection"
-                notes = f"Demoted behind STABLE ExtraTrees config ({target_selected['Selected_Config']} with {target_selected['CV_RMSE_CoeffVar']:.1f}% CoeffVar)."
-            elif target == "Vch":
-                action = "Demoted / Excluded from selection"
-                notes = f"Demoted behind STABLE RandomForest config ({target_selected['Selected_Config']} with {target_selected['CV_RMSE_CoeffVar']:.1f}% CoeffVar)."
-            else:
-                action = "Demoted / Excluded from selection"
-                notes = f"Exceeds stability threshold ({coeff_var:.1f}% >= {STABILITY_THRESHOLD}%)."
+        baseline_vs_tuned.append({
+            "Target": target,
+            "Baseline_Champion": f"{b_row['Model']} (Baseline)",
+            "Tuned_Champion": f"{t_row['Selected_Config']} ({t_row['Selected_Family']})",
+            "Baseline_CV_RMSE": b_row["CV_RMSE_mean"],
+            "Tuned_CV_RMSE": t_row["CV_RMSE_mean"],
+            "RMSE_Change": rmse_diff,
+            "RMSE_Pct_Change": rmse_pct_change,
+            "Baseline_CV_R2": b_row["CV_R2_mean"],
+            "Tuned_CV_R2": t_row["CV_R2_mean"],
+            "R2_Change": r2_diff,
+            "Baseline_Violations": int(b_row["CV_Physical_Violations_Total"]),
+            "Tuned_Violations": int(t_row["CV_Physical_Violations_Total"]),
+            "Violations_Change": int(viol_diff),
+        })
 
-            audit_rows.append({
-                "Target": target,
-                "Candidate_Family": fam,
-                "Config_Name": cfg_name,
-                "CV_RMSE_mean": rmse_val,
-                "CV_RMSE_CoeffVar_Pct": coeff_var,
-                "Stability_Status": stab_str,
-                "Audit_Action": action,
-                "Reason": "exceeds stability threshold",
-                "Audit_Notes": notes,
-            })
+baseline_vs_tuned_df = pd.DataFrame(baseline_vs_tuned)
 
-audit_df = pd.DataFrame(audit_rows)
-print(f"\nStability Audit table populated with {len(audit_df)} records.")
-for target in TARGETS:
-    sub_audit = audit_df[audit_df["Target"] == target]
-    print(f"  {target}: {len(sub_audit)} candidate families logged in Stability_Audit")
 
-# ---------------------------------------------------------------------------
-# 8. Write Excel Workbook
-# ---------------------------------------------------------------------------
+# 7. Write Excel Workbook
+
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
 
     readme = pd.DataFrame({
@@ -610,7 +516,7 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             "Revision_1", "Revision_2", "Revision_3",
         ],
         "Value": [
-            "Step 8 - ML Model Selection & Hyperparameter Tuning (Revised with Stability Gate)",
+            "Step 8 - ML Model Selection & Hyperparameter Tuning",
             str(INPUT_FILE.name),
             str(OUTPUT_FILE.name),
             pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -620,7 +526,7 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             SEED,
             "d, Rpm",
             "hc_hi, td_to, Vch",
-            67, 17,
+            315, 17,
             len(all_configs),
             "1. Physical violations (asc) -> 2. Stability (CoeffVar<30% first) -> 3. CV RMSE (asc) -> 4. CV MAE (asc) -> 5. CV R2 (desc)",
             f"{STABILITY_THRESHOLD}% CV RMSE CoeffVar",
@@ -629,19 +535,14 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             "Different targets legitimately select different optimal models",
             "Tuned models strictly evaluated for physical boundary compliance",
             "Zero silent clipping of predictions",
-            f"REVISED: Previous hc_hi selection ET_n200_dNone_l1 rejected (Train R2=1.0, CV CoeffVar=57.2%, Step 10 diagnosis)",
-            f"REVISED: Stability gate added - configs with CV RMSE CoeffVar >= {STABILITY_THRESHOLD}% demoted in ranking",
-            f"REVISED: ExtraTrees grid expanded to {n_et} configs (leaf in 1,2,3,5,8; depth in None,4,5,6,8,12)",
         ]
     })
     readme.to_excel(writer, sheet_name="README", index=False)
     final_selected_df.to_excel(writer, sheet_name="Final_Selected_Models", index=False)
     baseline_vs_tuned_df.to_excel(writer, sheet_name="Baseline_vs_Tuned", index=False)
-    best_per_family_df.to_excel(writer, sheet_name="CV_Best_Per_Family", index=False)
     ranking_df.to_excel(writer, sheet_name="CV_Rankings_All", index=False)
     holdout_predictions.to_excel(writer, sheet_name="Holdout_Predictions", index=False)
     train_predictions.to_excel(writer, sheet_name="Train_Predictions", index=False)
-    audit_df.to_excel(writer, sheet_name="Stability_Audit", index=False)
 
 print(f"\nOutput written to: {OUTPUT_FILE.name}")
-print("Step 8 complete (revised with stability gate + memorization check).")
+print("Step 8 complete.")

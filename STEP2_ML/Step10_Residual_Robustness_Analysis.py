@@ -1,6 +1,6 @@
 """
 Step 10 — Residual & Robustness Analysis
-Input : Step6_ML_Data_Preparation.xlsx, Step8_ML_Model_Selection_Tuning.xlsx,
+Input : Step6_ML_Data_Preparation.xlsx (ML_Train_315), Step8_ML_Model_Selection_Tuning.xlsx,
         Step5B_Final_Analysis_Consolidated.xlsx, Step9_Classical_vs_ML_Comparison.xlsx
 Output: Step10_Residual_Robustness_Analysis.xlsx
 """
@@ -46,9 +46,10 @@ PHYSICAL_BOUNDS = {
 SEED = 42
 
 RPM_REGIME_LABELS = {
-    "Low_0-80":    (0, 80),
-    "Med_100-180": (100, 180),
-    "High_200-260": (200, 260),
+    "Low_0-80":      (0, 80),
+    "Med_100-180":   (100, 180),
+    "High_200-260":  (200, 260),
+    "Extrap_280+":   (261, 360),
 }
 
 
@@ -57,8 +58,10 @@ def assign_rpm_regime(rpm):
         return "Low_0-80"
     elif rpm <= 180:
         return "Med_100-180"
-    else:
+    elif rpm <= 260:
         return "High_200-260"
+    else:
+        return "Extrap_280+"
 
 
 def safe_mape(y_true, y_pred, epsilon=1e-10):
@@ -74,10 +77,12 @@ def count_physical_violations(y_pred, target):
     return int(((y_pred[valid_mask] < lo) | (y_pred[valid_mask] > hi)).sum())
 
 
-# ---------------------------------------------------------------------------
+
 # 1. Load Data
-# ---------------------------------------------------------------------------
-train = pd.read_excel(INPUT_STEP6, sheet_name="ML_Train_67")
+
+xl_step6 = pd.ExcelFile(INPUT_STEP6)
+train_sheet_name = [s for s in xl_step6.sheet_names if s.startswith("ML_Train_")][0]
+train = pd.read_excel(INPUT_STEP6, sheet_name=train_sheet_name)
 holdout = pd.read_excel(INPUT_STEP6, sheet_name="ML_Holdout_17")
 classical_ho = pd.read_excel(INPUT_STEP5B, sheet_name="Holdout_Model_Check")
 ml_final = pd.read_excel(INPUT_STEP8, sheet_name="Final_Selected_Models")
@@ -94,9 +99,9 @@ full_data["RPM_Regime"] = full_data["Rpm"].apply(assign_rpm_regime)
 print("Data loaded successfully.")
 print(f"  Train: {len(train)} rows  |  Holdout: {len(holdout)} rows")
 
-# ---------------------------------------------------------------------------
-# 2. Rebuild Final ML Models (retrained on full Train_67)
-# ---------------------------------------------------------------------------
+
+# 2. Rebuild Final ML Models (retrained on full Train_315)
+
 def build_model_from_selection(family, config_name, params, seed=42):
     if isinstance(params, str):
         params = eval(params)
@@ -193,11 +198,11 @@ for _, row in ml_final.iterrows():
     ml_models[target] = model
     print(f"  {target}: Rebuilt & fitted {family} ({config})")
 
-print("ML models rebuilt and retrained on Train_67.")
+print(f"ML models rebuilt and retrained on Train_{len(train)}.")
 
-# ---------------------------------------------------------------------------
+
 # 3. Generate Predictions (Train + Holdout) for ML models
-# ---------------------------------------------------------------------------
+
 residual_records = []
 
 for target in TARGETS:
@@ -234,9 +239,9 @@ for target in TARGETS:
 residual_df = pd.DataFrame(residual_records)
 print(f"Residual table: {len(residual_df)} rows across {len(TARGETS)} targets x 2 sets.")
 
-# ---------------------------------------------------------------------------
+
 # 4. Residual Summary Statistics (per Target x Set)
-# ---------------------------------------------------------------------------
+
 summary_rows = []
 
 for target in TARGETS:
@@ -313,9 +318,9 @@ for _, r in summary_df.iterrows():
     print(f"  Shapiro-Wilk: W={sw_stat_str}  p={sw_p_str}  -> {r['Normality_Status']}")
     print(f"  Physical violations: {r['Physical_Violations']}")
 
-# ---------------------------------------------------------------------------
+
 # 5. Error Breakdown by Diameter
-# ---------------------------------------------------------------------------
+
 diameter_rows = []
 for target in TARGETS:
     for subset in ["Train", "Holdout"]:
@@ -357,9 +362,9 @@ for target in TARGETS:
     for _, r in sub.iterrows():
         print(f"  d={r['d_mm']:2d}mm: RMSE={r['RMSE']:.6f}  MAE={r['MAE']:.6f}  Bias={r['Mean_Bias']:+.6f}  Worst=Point_{r['Worst_Point_ID']}")
 
-# ---------------------------------------------------------------------------
+
 # 6. Error Breakdown by RPM Regime
-# ---------------------------------------------------------------------------
+
 regime_rows = []
 for target in TARGETS:
     for subset in ["Train", "Holdout"]:
@@ -400,10 +405,10 @@ for target in TARGETS:
     for _, r in sub.iterrows():
         print(f"  {r['RPM_Regime']:15s}: RMSE={r['RMSE']:.6f}  MAE={r['MAE']:.6f}  Bias={r['Mean_Bias']:+.6f}")
 
-# ---------------------------------------------------------------------------
+
 # 7. Heteroscedasticity Diagnostics
 #    Spearman correlation between |residual| and predicted value
-# ---------------------------------------------------------------------------
+
 hetero_rows = []
 for target in TARGETS:
     for subset in ["Train", "Holdout"]:
@@ -455,80 +460,43 @@ for _, r in hetero_df.iterrows():
     print(f"  |Residual| vs RPM:       Spearman={r['Spearman_AbsRes_vs_RPM']:.4f}  p={r['p_value_RPM']:.4f}  -> {r['Heteroscedasticity_RPM']}")
     print(f"  |Residual| vs d:         Spearman={r['Spearman_AbsRes_vs_d']:.4f}  p={r['p_value_d']:.4f}  -> {r['Heteroscedasticity_d']}")
 
-# ---------------------------------------------------------------------------
-# 8. Cross-Validation Stability Diagnostics (Repeated 5-Fold)
-# ---------------------------------------------------------------------------
+
+# 8. Cross-Validation Stability Diagnostics (from Step 8 Selection)
+
 print("\n" + "=" * 80)
-print("CV STABILITY DIAGNOSTICS (Repeated 5-Fold)")
+print("CV STABILITY DIAGNOSTICS (Repeated 5-Fold from Step 8)")
 print("=" * 80)
 
-rkf = RepeatedKFold(n_splits=5, n_repeats=3, random_state=SEED)
 stability_rows = []
-
 for target in TARGETS:
-    model = ml_models[target]
-    y = y_train[target]
-
-    fold_r2 = []
-    fold_rmse = []
-    fold_mae = []
-    fold_violations = []
-
-    for fold_idx, (tr_idx, val_idx) in enumerate(rkf.split(X_train)):
-        X_tr, X_val = X_train[tr_idx], X_train[val_idx]
-        y_tr, y_val = y[tr_idx], y[val_idx]
-
-        m = clone(model)
-        m.fit(X_tr, y_tr)
-        y_pred = m.predict(X_val)
-
-        fold_r2.append(float(r2_score(y_val, y_pred)))
-        fold_rmse.append(float(np.sqrt(mean_squared_error(y_val, y_pred))))
-        fold_mae.append(float(mean_absolute_error(y_val, y_pred)))
-        fold_violations.append(int(count_physical_violations(y_pred, target)))
-
-    fold_r2 = np.array(fold_r2)
-    fold_rmse = np.array(fold_rmse)
-    fold_mae = np.array(fold_mae)
-    fold_violations = np.array(fold_violations)
-
-    # Coefficient of variation of RMSE as stability indicator
-    cv_rmse_mean = float(np.mean(fold_rmse))
-    cv_rmse_std = float(np.std(fold_rmse, ddof=1))
-    cv_coeff_var = (cv_rmse_std / cv_rmse_mean * 100) if cv_rmse_mean > 0 else np.nan
-
-    # Range of R2 across folds
-    r2_range = float(np.max(fold_r2) - np.min(fold_r2))
+    m_row = ml_final[ml_final["Target"] == target].iloc[0]
+    cv_coeff_var = float(m_row["CV_RMSE_CoeffVar"])
+    verdict = "STABLE" if cv_coeff_var < 30.0 else "MODERATE" if cv_coeff_var < 50.0 else "UNSTABLE"
 
     stability_rows.append({
         "Target": target,
-        "Model": f"{ml_model_info[target]['family']} ({ml_model_info[target]['config']})",
-        "N_Folds": len(fold_r2),
-        "CV_R2_mean": float(np.mean(fold_r2)),
-        "CV_R2_std": float(np.std(fold_r2, ddof=1)),
-        "CV_R2_min": float(np.min(fold_r2)),
-        "CV_R2_max": float(np.max(fold_r2)),
-        "CV_R2_range": r2_range,
-        "CV_RMSE_mean": cv_rmse_mean,
-        "CV_RMSE_std": cv_rmse_std,
+        "Model": f"{m_row['Selected_Family']} ({m_row['Selected_Config']})",
+        "N_Folds": 15,
+        "CV_R2_mean": float(m_row["CV_R2_mean"]),
+        "CV_R2_std": float(m_row["CV_R2_std"]),
+        "CV_RMSE_mean": float(m_row["CV_RMSE_mean"]),
+        "CV_RMSE_std": float(m_row["CV_RMSE_std"]),
         "CV_RMSE_CoeffVar_Pct": cv_coeff_var,
-        "CV_MAE_mean": float(np.mean(fold_mae)),
-        "CV_MAE_std": float(np.std(fold_mae, ddof=1)),
-        "CV_Total_Physical_Violations": int(np.sum(fold_violations)),
-        "CV_Max_Fold_Violations": int(np.max(fold_violations)),
-        "Stability_Verdict": "STABLE" if cv_coeff_var < 30 and r2_range < 0.15 else "MODERATE" if cv_coeff_var < 50 else "UNSTABLE",
+        "CV_MAE_mean": float(m_row["CV_MAE_mean"]),
+        "CV_Total_Physical_Violations": int(m_row["CV_Physical_Violations_Total"]),
+        "Stability_Verdict": verdict,
     })
 
-    print(f"\n{target} -- {ml_model_info[target]['family']} ({ml_model_info[target]['config']})")
-    print(f"  R2:   {np.mean(fold_r2):.4f} +/- {np.std(fold_r2, ddof=1):.4f}  (range {r2_range:.4f})")
-    print(f"  RMSE: {cv_rmse_mean:.6f} +/- {cv_rmse_std:.6f}  (CoeffVar {cv_coeff_var:.1f}%)")
-    print(f"  Verdict: {stability_rows[-1]['Stability_Verdict']}")
+    print(f"\n{target} -- {m_row['Selected_Family']} ({m_row['Selected_Config']})")
+    print(f"  R2:   {m_row['CV_R2_mean']:.4f} +/- {m_row['CV_R2_std']:.4f}")
+    print(f"  RMSE: {m_row['CV_RMSE_mean']:.6f} +/- {m_row['CV_RMSE_std']:.6f}  (CoeffVar {cv_coeff_var:.1f}%)")
+    print(f"  Verdict: {verdict}")
 
 stability_df = pd.DataFrame(stability_rows)
 
-# ---------------------------------------------------------------------------
+
 # 9. Train-vs-Holdout Generalization Gap
-# ---------------------------------------------------------------------------
+
 gap_rows = []
 for target in TARGETS:
     train_sub = summary_df[(summary_df["Target"] == target) & (summary_df["Set"] == "Train")].iloc[0]
@@ -567,9 +535,9 @@ for _, r in gap_df.iterrows():
     print(f"  RMSE ratio (Holdout/Train) = {r['RMSE_Ratio_Holdout_over_Train']:.3f}  R2 drop = {r['R2_Drop']:.6f}")
     print(f"  Overfit risk: {r['Overfit_Risk']}")
 
-# ---------------------------------------------------------------------------
+
 # 10. Outlier Identification (Residuals > 2σ from mean)
-# ---------------------------------------------------------------------------
+
 outlier_rows = []
 for target in TARGETS:
     for subset in ["Train", "Holdout"]:
@@ -614,9 +582,9 @@ if len(outlier_df) > 0:
 else:
     print("  No outliers with |Z| >= 2 detected.")
 
-# ---------------------------------------------------------------------------
+
 # 11. Engineering Diagnostic Summary
-# ---------------------------------------------------------------------------
+
 eng_diag_rows = []
 for target in TARGETS:
     info = ml_model_info[target]
@@ -650,24 +618,13 @@ for target in TARGETS:
 
     overall_verdict = "PASS" if len(issues) == 0 else "PASS WITH CAVEATS" if len(issues) <= 2 else "REQUIRES ATTENTION"
 
-    if target == "td_to":
-        diag_notes = (
-            "td_to's instability reflects CV fold-sensitivity (LOW overfit risk, confirmed by Step 10) "
-            "rather than overfitting — a different and less severe issue than hc_hi's original problem. "
-            "SVR retained as best-available with documented caveat."
-        )
-    elif target == "hc_hi":
-        diag_notes = (
-            "Regularized ExtraTrees (depth=4) successfully eliminated training memorization; "
-            "Holdout/Train RMSE ratio of 1.023 confirms genuine surface generalization (LOW overfit risk)."
-        )
-    elif target == "Vch":
-        diag_notes = (
-            "RandomForest achieves STABLE CV performance (19.9% CoeffVar) and physically compliant non-negative "
-            "prediction (+0.004437) at Point 71, completely resolving boundary violations on holdout."
-        )
-    else:
-        diag_notes = "Standard diagnostics."
+    viol_note = "0 physical violations on holdout." if ho_summ["Physical_Violations"] == 0 else f"{ho_summ['Physical_Violations']} physical violation(s) on holdout."
+    diag_notes = (
+        f"{info['family']} ({info['config']}) selected for {target}. "
+        f"Holdout R2={ho_summ['R2']:.4f}, RMSE={ho_summ['RMSE']:.4f}, "
+        f"Holdout/Train RMSE ratio={gap['RMSE_Ratio_Holdout_over_Train']:.3f} ({gap['Overfit_Risk']} overfit risk). "
+        f"{viol_note} CV stability: {stab['Stability_Verdict']}."
+    )
 
     eng_diag_rows.append({
         "Target": target,
@@ -703,9 +660,9 @@ for _, r in eng_diag_df.iterrows():
     print(f"  Issues: {r['Issues_Found']}")
     print(f"  >>> VERDICT: {r['Overall_Verdict']}")
 
-# ---------------------------------------------------------------------------
+
 # 12. Write Output Workbook
-# ---------------------------------------------------------------------------
+
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
 
     readme = pd.DataFrame({
@@ -725,7 +682,7 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             "Comprehensive residual diagnostics, error structure analysis, stability assessment, "
             "generalization gap evaluation, and outlier detection for all three final ML models",
             "; ".join([f"{t}: {ml_model_info[t]['family']} ({ml_model_info[t]['config']})" for t in TARGETS]),
-            67, 17,
+            315, 17,
             "Residual stats, normality (Shapiro-Wilk), heteroscedasticity (Spearman), "
             "error by diameter, error by RPM regime, CV stability, train-vs-holdout gap, "
             "outlier identification (z-score), physical violation tracking",

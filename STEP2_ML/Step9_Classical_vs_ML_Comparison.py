@@ -1,6 +1,6 @@
 """
 Step 9 — Classical vs. ML Final Continuous-Model Comparison
-Input : Step5B_Final_Analysis_Consolidated.xlsx, Step6_ML_Data_Preparation.xlsx, Step8_ML_Model_Selection_Tuning.xlsx
+Input : Step5B_Final_Analysis_Consolidated.xlsx, Step6_ML_Data_Preparation.xlsx (ML_Train_315), Step8_ML_Model_Selection_Tuning.xlsx
 Output: Step9_Classical_vs_ML_Comparison.xlsx
 """
 
@@ -44,26 +44,27 @@ def count_physical_violations(y_pred, target):
     return int(((y_pred[valid_mask] < lo) | (y_pred[valid_mask] > hi)).sum())
 
 
-# ---------------------------------------------------------------------------
+
 # 1. Load Data
-# ---------------------------------------------------------------------------
+
 # Classical holdout evaluation
 classical_ho = pd.read_excel(INPUT_STEP5B, sheet_name="Holdout_Model_Check")
 
-# ML train & holdout datasets (for diagnostic comparisons)
-train = pd.read_excel(INPUT_STEP6, sheet_name="ML_Train_67")
+xl_step6 = pd.ExcelFile(INPUT_STEP6)
+train_sheet_name = [s for s in xl_step6.sheet_names if s.startswith("ML_Train_")][0]
+train = pd.read_excel(INPUT_STEP6, sheet_name=train_sheet_name)
 holdout = pd.read_excel(INPUT_STEP6, sheet_name="ML_Holdout_17")
 
 # ML tuned results from Step 8
 ml_final_models = pd.read_excel(INPUT_STEP8, sheet_name="Final_Selected_Models")
 ml_ho_preds = pd.read_excel(INPUT_STEP8, sheet_name="Holdout_Predictions")
-ml_best_per_fam = pd.read_excel(INPUT_STEP8, sheet_name="CV_Best_Per_Family")
+ml_cv_rankings = pd.read_excel(INPUT_STEP8, sheet_name="CV_Rankings_All")
 
 print("Step 5B, Step 6, and Step 8 workbooks successfully loaded.")
 
-# ---------------------------------------------------------------------------
+
 # 2. Extract Classical Metrics on 17 Holdout Points
-# ---------------------------------------------------------------------------
+
 classical_metrics = {}
 for target in TARGETS:
     sub = classical_ho[classical_ho["Target"] == target].copy()
@@ -94,9 +95,9 @@ for target in TARGETS:
         "Physical_Violations": violations,
     }
 
-# ---------------------------------------------------------------------------
+
 # 3. Build Comparative Summary (Classical vs ML) - Exactly 1 locked model per target
-# ---------------------------------------------------------------------------
+
 comparison_rows = []
 for target in TARGETS:
     c = classical_metrics[target]
@@ -142,9 +143,9 @@ for _, r in comparison_df.iterrows():
     print(f"    R2 = {r['ML_Holdout_R2']:.6f}  RMSE = {r['ML_Holdout_RMSE']:.6f}  Coverage = {r['ML_Coverage_Pct']:.1f}%  Violations = {r['ML_Holdout_Physical_Violations']}")
     print(f"  Comparison: RMSE Improvement = {r['RMSE_Pct_Improvement']:+.2f}%  Coverage Gain = +{r['Coverage_Improvement_Pct']:.1f}%")
 
-# ---------------------------------------------------------------------------
+
 # 4. Point-by-Point Side-by-Side Holdout Comparison Table
-# ---------------------------------------------------------------------------
+
 pbp_df = ml_ho_preds[[ID_COL, "d", "Rpm"]].copy()
 
 for target in TARGETS:
@@ -155,9 +156,9 @@ for target in TARGETS:
     pbp_df[f"{target}_ml_pred"] = ml_ho_preds[f"{target}_pred"].values
     pbp_df[f"{target}_ml_res"] = ml_ho_preds[f"{target}_residual"].values
 
-# ---------------------------------------------------------------------------
+
 # 5. Error Breakdown by RPM Regime (Low: 0-80, Med: 100-180, High: 200-260)
-# ---------------------------------------------------------------------------
+
 def assign_rpm_regime(rpm):
     if rpm <= 80:
         return "Low_0-80"
@@ -199,9 +200,9 @@ for target in TARGETS:
 
 regime_df = pd.DataFrame(regime_rows)
 
-# ---------------------------------------------------------------------------
+
 # 6. Diagnostic Comparison for Vch (ExtraTrees vs Locked XGBoost)
-# ---------------------------------------------------------------------------
+
 # Evaluate ExtraTrees (ET_n200_dNone_l1) on holdout for diagnostic comparison only
 et_vch_model = ExtraTreesRegressor(
     n_estimators=200, max_depth=None, min_samples_leaf=1,
@@ -226,8 +227,8 @@ vch_locked_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_pred"].valu
 vch_locked_p71_res = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_res"].values[0])
 vch_rsm_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_classical_pred"].values[0])
 
-# Get CV stats for ET from CV_Best_Per_Family
-et_cv_row = ml_best_per_fam[(ml_best_per_fam["Target"] == "Vch") & (ml_best_per_fam["Family"] == "ExtraTrees")].iloc[0]
+# Get CV stats for ET from CV_Rankings_All
+et_cv_row = ml_cv_rankings[(ml_cv_rankings["Target"] == "Vch") & (ml_cv_rankings["Family"] == "ExtraTrees")].sort_values("CV_RMSE_mean").iloc[0]
 
 vch_locked_notes = (
     f"Officially selected by CV criteria ({vch_locked_row['Selected_Family']}). "
@@ -286,9 +287,9 @@ diag_vch_df = pd.DataFrame([
     },
 ])
 
-# ---------------------------------------------------------------------------
+
 # 7. Engineering Synthesis & Model Decision Table (Fully Programmatic Values)
-# ---------------------------------------------------------------------------
+
 # Extract programmatic variables directly from data frames
 p71_sub = pbp_df[pbp_df[ID_COL] == 71].iloc[0]
 
@@ -372,9 +373,9 @@ decisions = [
 
 synthesis_df = pd.DataFrame(decisions)
 
-# ---------------------------------------------------------------------------
+
 # 8. Write Output Workbook
-# ---------------------------------------------------------------------------
+
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
 
     readme = pd.DataFrame({
