@@ -8,7 +8,6 @@ from pathlib import Path
 import warnings
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import ExtraTreesRegressor
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 
 warnings.filterwarnings("ignore")
@@ -50,15 +49,11 @@ def count_physical_violations(y_pred, target):
 # Classical holdout evaluation
 classical_ho = pd.read_excel(INPUT_STEP5B, sheet_name="Holdout_Model_Check")
 
-xl_step6 = pd.ExcelFile(INPUT_STEP6)
-train_sheet_name = [s for s in xl_step6.sheet_names if s.startswith("ML_Train_")][0]
-train = pd.read_excel(INPUT_STEP6, sheet_name=train_sheet_name)
 holdout = pd.read_excel(INPUT_STEP6, sheet_name="ML_Holdout_17")
 
 # ML tuned results from Step 8
 ml_final_models = pd.read_excel(INPUT_STEP8, sheet_name="Final_Selected_Models")
 ml_ho_preds = pd.read_excel(INPUT_STEP8, sheet_name="Holdout_Predictions")
-ml_cv_rankings = pd.read_excel(INPUT_STEP8, sheet_name="CV_Rankings_All")
 
 print("Step 5B, Step 6, and Step 8 workbooks successfully loaded.")
 
@@ -144,7 +139,7 @@ for _, r in comparison_df.iterrows():
     print(f"  Comparison: RMSE Improvement = {r['RMSE_Pct_Improvement']:+.2f}%  Coverage Gain = +{r['Coverage_Improvement_Pct']:.1f}%")
 
 
-# 4. Point-by-Point Side-by-Side Holdout Comparison Table
+# 4. Side-by-Side Holdout Comparison Table
 
 pbp_df = ml_ho_preds[[ID_COL, "d", "Rpm"]].copy()
 
@@ -201,182 +196,13 @@ for target in TARGETS:
 regime_df = pd.DataFrame(regime_rows)
 
 
-# 6. Diagnostic Comparison for Vch (ExtraTrees vs Locked XGBoost)
-
-# Evaluate ExtraTrees (ET_n200_dNone_l1) on holdout for diagnostic comparison only
-et_vch_model = ExtraTreesRegressor(
-    n_estimators=200, max_depth=None, min_samples_leaf=1,
-    random_state=42, n_jobs=-1
-)
-et_vch_model.fit(train[FEATURES].values, train["Vch"].values)
-et_vch_ho_pred = et_vch_model.predict(holdout[FEATURES].values)
-y_ho_vch_true = holdout["Vch"].values
-
-et_vch_ho_r2 = float(r2_score(y_ho_vch_true, et_vch_ho_pred))
-et_vch_ho_rmse = float(np.sqrt(mean_squared_error(y_ho_vch_true, et_vch_ho_pred)))
-et_vch_ho_mae = float(mean_absolute_error(y_ho_vch_true, et_vch_ho_pred))
-et_vch_ho_mape = float(safe_mape(y_ho_vch_true, et_vch_ho_pred))
-et_vch_ho_viol = int(count_physical_violations(et_vch_ho_pred, "Vch"))
-
-p71_mask = holdout[ID_COL] == 71
-et_p71_vch_pred = float(et_vch_ho_pred[p71_mask][0])
-et_p71_vch_res = float(y_ho_vch_true[p71_mask][0] - et_p71_vch_pred)
-
-vch_locked_row = ml_final_models[ml_final_models["Target"] == "Vch"].iloc[0]
-vch_locked_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_pred"].values[0])
-vch_locked_p71_res = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_ml_res"].values[0])
-vch_rsm_p71_pred = float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_classical_pred"].values[0])
-
-# Get CV stats for ET from CV_Rankings_All
-et_cv_row = ml_cv_rankings[(ml_cv_rankings["Target"] == "Vch") & (ml_cv_rankings["Family"] == "ExtraTrees")].sort_values("CV_RMSE_mean").iloc[0]
-
-vch_locked_notes = (
-    f"Officially selected by CV criteria ({vch_locked_row['Selected_Family']}). "
-    f"Holdout R2={vch_locked_row['Holdout_R2']:.6f}, RMSE={vch_locked_row['Holdout_RMSE']:.6f}. "
-)
-if int(vch_locked_row["Holdout_Physical_Violations"]) > 0:
-    vch_locked_notes += f"Negative volume ({vch_locked_p71_pred:.6f}) at Point 71 documented as a known boundary limitation."
-else:
-    vch_locked_notes += f"Zero physical violations on holdout (Point 71 = {vch_locked_p71_pred:+.6f}). Fully physically compliant."
-
-diag_vch_df = pd.DataFrame([
-    {
-        "Model": f"{vch_locked_row['Selected_Family']} ({vch_locked_row['Selected_Config']})",
-        "Role_in_Pipeline": "OFFICIALLY LOCKED (Step 8 CV Champion)",
-        "CV_R2_mean": vch_locked_row["CV_R2_mean"],
-        "CV_RMSE_mean": vch_locked_row["CV_RMSE_mean"],
-        "CV_Physical_Violations": int(vch_locked_row["CV_Physical_Violations_Total"]),
-        "Holdout_R2": vch_locked_row["Holdout_R2"],
-        "Holdout_RMSE": vch_locked_row["Holdout_RMSE"],
-        "Holdout_MAE": vch_locked_row["Holdout_MAE"],
-        "Holdout_MAPE": vch_locked_row["Holdout_MAPE"],
-        "Holdout_Physical_Violations": int(vch_locked_row["Holdout_Physical_Violations"]),
-        "Point_71_Predicted_Vch": vch_locked_p71_pred,
-        "Point_71_Residual": vch_locked_p71_res,
-        "Status_and_Notes": vch_locked_notes,
-    },
-    {
-        "Model": "ExtraTrees (ET_n200_dNone_l1)",
-        "Role_in_Pipeline": "DIAGNOSTIC COMPARISON (Not a Reselection)",
-        "CV_R2_mean": et_cv_row["CV_R2_mean"],
-        "CV_RMSE_mean": et_cv_row["CV_RMSE_mean"],
-        "CV_Physical_Violations": int(et_cv_row["CV_Physical_Violations_Total"]),
-        "Holdout_R2": et_vch_ho_r2,
-        "Holdout_RMSE": et_vch_ho_rmse,
-        "Holdout_MAE": et_vch_ho_mae,
-        "Holdout_MAPE": et_vch_ho_mape,
-        "Holdout_Physical_Violations": et_vch_ho_viol,
-        "Point_71_Predicted_Vch": et_p71_vch_pred,
-        "Point_71_Residual": et_p71_vch_res,
-        "Status_and_Notes": "Evaluated post-hoc for diagnostic comparison only. Inherently non-negative (0 violations on holdout, Point 71 = +0.000197) but not selected because rank-1 model won CV ranking.",
-    },
-    {
-        "Model": "3rd-order RSM (Classical)",
-        "Role_in_Pipeline": "CLASSICAL BASELINE (Step 5)",
-        "CV_R2_mean": 0.986211,
-        "CV_RMSE_mean": 0.009972,
-        "CV_Physical_Violations": 0,
-        "Holdout_R2": classical_metrics["Vch"]["Holdout_R2"],
-        "Holdout_RMSE": classical_metrics["Vch"]["Holdout_RMSE"],
-        "Holdout_MAE": classical_metrics["Vch"]["Holdout_MAE"],
-        "Holdout_MAPE": classical_metrics["Vch"]["Holdout_MAPE"],
-        "Holdout_Physical_Violations": classical_metrics["Vch"]["Physical_Violations"],
-        "Point_71_Predicted_Vch": vch_rsm_p71_pred,
-        "Point_71_Residual": float(pbp_df.loc[pbp_df[ID_COL] == 71, "Vch_classical_res"].values[0]),
-        "Status_and_Notes": "Classical baseline model. Also produces negative volume (-0.033295) at Point 71 as documented in Step 5A.",
-    },
-])
-
-
-# 7. Engineering Synthesis & Model Decision Table (Fully Programmatic Values)
-
-# Extract programmatic variables directly from data frames
-p71_sub = pbp_df[pbp_df[ID_COL] == 71].iloc[0]
-
-hc_p71_actual = p71_sub["hc_hi_actual"]
-hc_p71_pred = p71_sub["hc_hi_ml_pred"]
-hc_p71_res = p71_sub["hc_hi_ml_res"]
-hc_p71_abs_err = abs(hc_p71_res)
-
-td_p71_actual = p71_sub["td_to_actual"]
-td_p71_pred = p71_sub["td_to_ml_pred"]
-td_p71_res = p71_sub["td_to_ml_res"]
-
-vch_p71_actual = p71_sub["Vch_actual"]
-vch_p71_pred = p71_sub["Vch_ml_pred"]
-vch_p71_res = p71_sub["Vch_ml_res"]
-vch_p71_undershoot = abs(vch_p71_pred) if vch_p71_pred < 0 else 0.0
-
-c_hc = classical_metrics["hc_hi"]
-m_hc = ml_final_models[ml_final_models["Target"] == "hc_hi"].iloc[0]
-
-c_td = classical_metrics["td_to"]
-m_td = ml_final_models[ml_final_models["Target"] == "td_to"].iloc[0]
-td_rmse_pct_red = ((c_td["Holdout_RMSE"] - m_td["Holdout_RMSE"]) / c_td["Holdout_RMSE"]) * 100.0
-
-c_vch = classical_metrics["Vch"]
-m_vch = ml_final_models[ml_final_models["Target"] == "Vch"].iloc[0]
-vch_rmse_pct_red = ((c_vch["Holdout_RMSE"] - m_vch["Holdout_RMSE"]) / c_vch["Holdout_RMSE"]) * 100.0
-
-vch_has_viol = int(m_vch["Holdout_Physical_Violations"]) > 0
-vch_limitation = (
-    f"Predicts negative volume at Point 71 (d=6, RPM=0) with Vch = {vch_p71_pred:.6f} (undershoot of {vch_p71_undershoot:.6f}), first revealed on holdout; documented honestly as a known boundary limitation."
-    if vch_has_viol else
-    "Tree-based step boundaries instead of perfectly continuous analytical derivatives; non-negative everywhere on holdout."
-)
-vch_recommendation = (
-    f"{m_vch['Selected_Family']} ({m_vch['Selected_Config']}) officially locked per Step 8 CV-only selection; Point 71 negative prediction is flagged as a known limitation without silent clipping or holdout reselection."
-    if vch_has_viol else
-    f"{m_vch['Selected_Family']} ({m_vch['Selected_Config']}) officially locked per Step 8 CV-only selection with stability gate (CoeffVar<30%); achieves 100% domain coverage and 0 physical violations on both CV and holdout."
-)
-vch_verdict = (
-    f"KNOWN LIMITATION ({int(m_vch['Holdout_Physical_Violations'])} holdout violation at Point 71: {vch_p71_pred:.6f})"
-    if vch_has_viol else
-    f"PASS ({int(m_vch['Holdout_Physical_Violations'])} violations)"
-)
-
-decisions = [
-    {
-        "Response": "hc_hi",
-        "Classical_Champion": f"{c_hc['Method']}",
-        "ML_Champion": f"{m_hc['Selected_Family']} ({m_hc['Selected_Config']})",
-        "Key_Strength_Classical": f"Smooth interpolation in interior of convex hull (Holdout R2={c_hc['Holdout_R2']:.4f}, RMSE={c_hc['Holdout_RMSE']:.6f}).",
-        "Key_Limitation_Classical": f"Convex-hull limited; fails (NaN) at boundary points like Point 71 (d=6, RPM=0). Coverage={c_hc['Coverage_Pct']:.1f}%.",
-        "Key_Strength_ML": f"100% coverage across full domain; Point 71 predicted {hc_p71_pred:.6f} vs actual {hc_p71_actual:.6f} (residual {hc_p71_res:+.6f}, absolute error {hc_p71_abs_err:.6f}); Holdout R2={m_hc['Holdout_R2']:.4f}, RMSE={m_hc['Holdout_RMSE']:.6f}; 0 physical violations.",
-        "Key_Limitation_ML": "Tree-based step boundaries instead of perfectly continuous analytical derivatives.",
-        "Recommended_Model_for_Pipeline": f"{m_hc['Selected_Family']} ({m_hc['Selected_Config']}) for universal simulation & DSS; Cubic Griddata valid strictly inside training hull.",
-        "Physical_Validity_Verdict": f"PASS ({int(m_hc['Holdout_Physical_Violations'])} violations)",
-    },
-    {
-        "Response": "td_to",
-        "Classical_Champion": f"{c_td['Method']}",
-        "ML_Champion": f"{m_td['Selected_Family']} ({m_td['Selected_Config']})",
-        "Key_Strength_Classical": f"Analytical closed-form equation; zero violations on training and holdout (Holdout R2={c_td['Holdout_R2']:.4f}).",
-        "Key_Limitation_Classical": f"Higher residuals on holdout (RMSE={c_td['Holdout_RMSE']:.6f}, MAE={c_td['Holdout_MAE']:.6f}).",
-        "Key_Strength_ML": f"Superior accuracy across all RPM regimes; {td_rmse_pct_red:.2f}% RMSE reduction ({c_td['Holdout_RMSE']:.6f} -> {m_td['Holdout_RMSE']:.6f}, MAE={m_td['Holdout_MAE']:.6f}); Holdout R2={m_td['Holdout_R2']:.4f}; zero physical violations.",
-        "Key_Limitation_ML": "Requires kernel matrix evaluation; less directly auditable than a compact polynomial.",
-        "Recommended_Model_for_Pipeline": f"{m_td['Selected_Family']} ({m_td['Selected_Config']}) is the locked champion for continuous modelling; 3rd-order RSM remains useful as an explicit closed-form formula.",
-        "Physical_Validity_Verdict": f"PASS ({int(m_td['Holdout_Physical_Violations'])} violations)",
-    },
-    {
-        "Response": "Vch",
-        "Classical_Champion": f"{c_vch['Method']}",
-        "ML_Champion": f"{m_vch['Selected_Family']} ({m_vch['Selected_Config']})",
-        "Key_Strength_Classical": f"Captures overall volume growth trend with Holdout R2={c_vch['Holdout_R2']:.4f}, RMSE={c_vch['Holdout_RMSE']:.6f}.",
-        "Key_Limitation_Classical": f"Violates lower physical boundary at Point 71 (d=6, RPM=0) predicting negative volume ({vch_rsm_p71_pred:.6f}).",
-        "Key_Strength_ML": f"Achieves {vch_rmse_pct_red:.2f}% RMSE reduction over 3rd-order RSM ({c_vch['Holdout_RMSE']:.6f} -> {m_vch['Holdout_RMSE']:.6f}); Holdout R2={m_vch['Holdout_R2']:.4f}, MAE={m_vch['Holdout_MAE']:.6f}; 0 violations on CV.",
-        "Key_Limitation_ML": vch_limitation,
-        "Recommended_Model_for_Pipeline": vch_recommendation,
-        "Physical_Validity_Verdict": vch_verdict,
-    },
-]
-
-synthesis_df = pd.DataFrame(decisions)
-
-
-# 8. Write Output Workbook
+# 6. Write Output Workbook
 
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
+
+    hc_comp = comparison_df[comparison_df["Target"] == "hc_hi"].iloc[0]
+    td_comp = comparison_df[comparison_df["Target"] == "td_to"].iloc[0]
+    vch_comp = comparison_df[comparison_df["Target"] == "Vch"].iloc[0]
 
     readme = pd.DataFrame({
         "Item": [
@@ -394,19 +220,17 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             "ML_Holdout_17 (locked test set)",
             17,
             "hc_hi: Cubic Griddata; td_to: 3rd-order RSM; Vch: 3rd-order RSM",
-            "hc_hi: ExtraTrees; td_to: SVR; Vch: XGBoost",
+            f"hc_hi: {hc_comp['ML_Selected_Model']}; td_to: {td_comp['ML_Selected_Model']}; Vch: {vch_comp['ML_Selected_Model']}",
             "Multi-objective: R2, RMSE, MAE, coverage %, physical boundary compliance",
-            "ML eliminates the coverage gap of Cubic Griddata (100% vs 94.1%) for hc_hi",
-            "ML SVR improves td_to holdout RMSE by 27.50% over 3rd-order RSM with zero violations",
-            f"ML XGBoost achieves {vch_rmse_pct_red:.2f}% RMSE reduction over 3rd-order RSM on Vch; Point 71 negative volume ({vch_p71_pred:.6f}) is documented as a known boundary limitation without silent clipping",
+            f"ML eliminates coverage gap of Cubic Griddata (100% vs {hc_comp['Classical_Coverage_Pct']:.1f}%) on hc_hi",
+            f"ML achieves {td_comp['RMSE_Pct_Improvement']:.2f}% RMSE reduction over 3rd-order RSM on td_to with {int(td_comp['ML_Holdout_Physical_Violations'])} violations",
+            f"ML achieves {vch_comp['RMSE_Pct_Improvement']:.2f}% RMSE reduction over 3rd-order RSM on Vch with {int(vch_comp['ML_Holdout_Physical_Violations'])} violations",
         ]
     })
     readme.to_excel(writer, sheet_name="README", index=False)
     comparison_df.to_excel(writer, sheet_name="Model_Comparison_Summary", index=False)
     pbp_df.to_excel(writer, sheet_name="Point_by_Point_Holdout", index=False)
     regime_df.to_excel(writer, sheet_name="Regime_Error_Breakdown", index=False)
-    synthesis_df.to_excel(writer, sheet_name="Engineering_Decisions", index=False)
-    diag_vch_df.to_excel(writer, sheet_name="Diagnostic_Vch_Comparison", index=False)
 
 print(f"\nOutput written to: {OUTPUT_FILE.name}")
 print("Step 9 complete.")
