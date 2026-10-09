@@ -46,7 +46,6 @@ N_REPEATS = 3
 
 # A config is "stable" if its RMSE coefficient of variation across folds < this
 STABILITY_THRESHOLD = 30.0
-# Tree-based models with train R2 above this are considered to be memorizing
 MEMORIZATION_R2_THRESHOLD = 0.995
 TREE_FAMILIES = {"RandomForest", "ExtraTrees", "XGBoost"}
 MAX_MEMORIZATION_CANDIDATES = 50
@@ -289,7 +288,7 @@ for target in TARGETS:
           f"rank-1: {top['Config_Name']} ({'stable' if top['Stability_Rank']==0 else 'unstable'})")
 
 
-# Select final model per target: skip memorizing tree configs, retrain, evaluate on holdout
+# Select final model per target
 
 config_dict = {cfg[1]: cfg[2] for cfg in all_configs}
 
