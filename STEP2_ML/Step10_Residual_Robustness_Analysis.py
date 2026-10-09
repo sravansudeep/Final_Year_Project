@@ -266,7 +266,7 @@ for target in TARGETS:
         res_skew = float(stats.skew(res, bias=False)) if n > 2 else np.nan
         res_kurt = float(stats.kurtosis(res, bias=False)) if n > 3 else np.nan
 
-        # Shapiro-Wilk normality test (valid for n >= 3 and non-constant data)
+        # Shapiro-Wilk normality test
         if n >= 3 and np.std(res) > 1e-15:
             sw_stat, sw_p = stats.shapiro(res)
         else:
@@ -407,7 +407,7 @@ for target in TARGETS:
 
 
 # 7. Heteroscedasticity Diagnostics
-#    Spearman correlation between |residual| and predicted value
+#    Spearman correlation between residual and predicted value
 
 hetero_rows = []
 for target in TARGETS:
