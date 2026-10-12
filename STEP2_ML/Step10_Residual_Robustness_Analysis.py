@@ -45,14 +45,6 @@ PHYSICAL_BOUNDS = {
 
 SEED = 42
 
-RPM_REGIME_LABELS = {
-    "Low_0-80":      (0, 80),
-    "Med_100-180":   (100, 180),
-    "High_200-260":  (200, 260),
-    "Extrap_280+":   (261, 360),
-}
-
-
 def assign_rpm_regime(rpm):
     if rpm <= 80:
         return "Low_0-80"
