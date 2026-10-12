@@ -296,7 +296,7 @@ final_selected      = []
 holdout_predictions = holdout[[ID_COL, "d", "Rpm"]].copy()
 train_predictions   = train[[ID_COL, "d", "Rpm"]].copy()
 
-print("\nFinal selection (violations -> stability -> RMSE, memorization check for trees):")
+print("\nFinal selection (violations -> stability -> RMSE):")
 for target in TARGETS:
     candidates = ranking_df[ranking_df["Target"] == target].copy()
 

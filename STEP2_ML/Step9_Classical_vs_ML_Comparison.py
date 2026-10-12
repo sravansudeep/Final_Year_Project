@@ -152,51 +152,7 @@ for target in TARGETS:
     pbp_df[f"{target}_ml_res"] = ml_ho_preds[f"{target}_residual"].values
 
 
-# 5. Error Breakdown by RPM Regime (Low: 0-80, Med: 100-180, High: 200-260)
-
-def assign_rpm_regime(rpm):
-    if rpm <= 80:
-        return "Low_0-80"
-    elif rpm <= 180:
-        return "Med_100-180"
-    else:
-        return "High_200-260"
-
-pbp_df["RPM_Regime"] = pbp_df["Rpm"].apply(assign_rpm_regime)
-
-regime_rows = []
-for target in TARGETS:
-    for regime in ["Low_0-80", "Med_100-180", "High_200-260"]:
-        sub_reg = pbp_df[pbp_df["RPM_Regime"] == regime]
-        n_pts = len(sub_reg)
-
-        # Classical
-        c_res = sub_reg[f"{target}_classical_res"].dropna()
-        c_rmse = float(np.sqrt(np.mean(c_res**2))) if len(c_res) > 0 else np.nan
-        c_mae = float(np.mean(np.abs(c_res))) if len(c_res) > 0 else np.nan
-
-        # ML
-        m_res = sub_reg[f"{target}_ml_res"].dropna()
-        m_rmse = float(np.sqrt(np.mean(m_res**2))) if len(m_res) > 0 else np.nan
-        m_mae = float(np.mean(np.abs(m_res))) if len(m_res) > 0 else np.nan
-
-        better = "ML" if m_rmse < c_rmse else "Classical"
-
-        regime_rows.append({
-            "Target": target,
-            "RPM_Regime": regime,
-            "Holdout_Points": n_pts,
-            "Classical_RMSE": c_rmse,
-            "Classical_MAE": c_mae,
-            "ML_RMSE": m_rmse,
-            "ML_MAE": m_mae,
-            "Lower_Error_Model": better,
-        })
-
-regime_df = pd.DataFrame(regime_rows)
-
-
-# 6. Write Output Workbook
+# 5. Write Output Workbook
 
 with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
 
@@ -222,15 +178,11 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             "hc_hi: Cubic Griddata; td_to: 3rd-order RSM; Vch: 3rd-order RSM",
             f"hc_hi: {hc_comp['ML_Selected_Model']}; td_to: {td_comp['ML_Selected_Model']}; Vch: {vch_comp['ML_Selected_Model']}",
             "Multi-objective: R2, RMSE, MAE, coverage %, physical boundary compliance",
-            f"ML eliminates coverage gap of Cubic Griddata (100% vs {hc_comp['Classical_Coverage_Pct']:.1f}%) on hc_hi",
-            f"ML achieves {td_comp['RMSE_Pct_Improvement']:.2f}% RMSE reduction over 3rd-order RSM on td_to with {int(td_comp['ML_Holdout_Physical_Violations'])} violations",
-            f"ML achieves {vch_comp['RMSE_Pct_Improvement']:.2f}% RMSE reduction over 3rd-order RSM on Vch with {int(vch_comp['ML_Holdout_Physical_Violations'])} violations",
         ]
     })
     readme.to_excel(writer, sheet_name="README", index=False)
     comparison_df.to_excel(writer, sheet_name="Model_Comparison_Summary", index=False)
     pbp_df.to_excel(writer, sheet_name="Point_by_Point_Holdout", index=False)
-    regime_df.to_excel(writer, sheet_name="Regime_Error_Breakdown", index=False)
 
 print(f"\nOutput written to: {OUTPUT_FILE.name}")
 print("Step 9 complete.")
