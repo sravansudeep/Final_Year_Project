@@ -127,9 +127,9 @@ for target in TARGETS:
 
 comparison_df = pd.DataFrame(comparison_rows)
 
-print("\n" + "="*80)
-print("CLASSICAL vs. ML FINAL CONTINUOUS-MODEL COMPARISON (HOLDOUT BENCHMARK)")
-print("="*80)
+print("\n" + "-"*70)
+print("classical vs. ml — final holdout comparison")
+print("-"*70)
 for _, r in comparison_df.iterrows():
     print(f"\nTarget: {r['Target']}")
     print(f"  Classical [{r['Classical_Model']}]:")

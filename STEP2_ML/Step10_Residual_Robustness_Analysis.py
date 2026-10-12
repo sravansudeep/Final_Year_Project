@@ -291,14 +291,14 @@ for target in TARGETS:
             "Shapiro_Wilk_Stat": float(sw_stat) if not np.isnan(sw_stat) else np.nan,
             "Shapiro_Wilk_p": float(sw_p) if not np.isnan(sw_p) else np.nan,
             "Normality_Status": normality,
-            "Bias_Status": "NEGLIGIBLE" if (res_std and res_std > 0 and abs(bias) < 0.01 * res_std) else "NON-NEGLIGIBLE",
+            "Bias_Status": "negligible" if (res_std and res_std > 0 and abs(bias) < 0.01 * res_std) else "non-negligible",
         })
 
 summary_df = pd.DataFrame(summary_rows)
 
-print("\n" + "=" * 80)
-print("RESIDUAL SUMMARY STATISTICS (ML FINAL MODELS)")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Residual Summary Statistics — ML Final Models")
+print("-" * 70)
 for _, r in summary_df.iterrows():
     print(f"\n{r['Target']} [{r['Set']}] -- {r['Model']}")
     print(f"  R2={r['R2']:.6f}  RMSE={r['RMSE']:.6f}  MAE={r['MAE']:.6f}")
@@ -345,9 +345,9 @@ for target in TARGETS:
 
 diameter_df = pd.DataFrame(diameter_rows)
 
-print("\n" + "=" * 80)
-print("ERROR BREAKDOWN BY DIAMETER")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Error Breakdown by Diameter")
+print("-" * 70)
 for target in TARGETS:
     sub = diameter_df[(diameter_df["Target"] == target) & (diameter_df["Set"] == "Train")]
     print(f"\n{target} (Train):")
@@ -388,9 +388,9 @@ for target in TARGETS:
 
 regime_df = pd.DataFrame(regime_rows)
 
-print("\n" + "=" * 80)
-print("ERROR BREAKDOWN BY RPM REGIME")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Error breakdown by RPM Regime")
+print("-" * 70)
 for target in TARGETS:
     sub = regime_df[(regime_df["Target"] == target) & (regime_df["Set"] == "Train")]
     print(f"\n{target} (Train):")
@@ -432,20 +432,20 @@ for target in TARGETS:
             "Set": subset,
             "Spearman_AbsRes_vs_Predicted": float(sp_corr) if not np.isnan(sp_corr) else np.nan,
             "p_value_Predicted": float(sp_p) if not np.isnan(sp_p) else np.nan,
-            "Heteroscedasticity_Predicted": "DETECTED (p<0.05)" if sp_p < 0.05 else "NOT DETECTED" if not np.isnan(sp_p) else "N/A",
+            "Heteroscedasticity_Predicted": "detected (p<0.05)" if sp_p < 0.05 else "not detected" if not np.isnan(sp_p) else "n/a",
             "Spearman_AbsRes_vs_RPM": float(sp_corr_rpm) if not np.isnan(sp_corr_rpm) else np.nan,
             "p_value_RPM": float(sp_p_rpm) if not np.isnan(sp_p_rpm) else np.nan,
-            "Heteroscedasticity_RPM": "DETECTED (p<0.05)" if sp_p_rpm < 0.05 else "NOT DETECTED" if not np.isnan(sp_p_rpm) else "N/A",
+            "Heteroscedasticity_RPM": "detected (p<0.05)" if sp_p_rpm < 0.05 else "not detected" if not np.isnan(sp_p_rpm) else "n/a",
             "Spearman_AbsRes_vs_d": float(sp_corr_d) if not np.isnan(sp_corr_d) else np.nan,
             "p_value_d": float(sp_p_d) if not np.isnan(sp_p_d) else np.nan,
-            "Heteroscedasticity_d": "DETECTED (p<0.05)" if sp_p_d < 0.05 else "NOT DETECTED" if not np.isnan(sp_p_d) else "N/A",
+            "Heteroscedasticity_d": "detected (p<0.05)" if sp_p_d < 0.05 else "not detected" if not np.isnan(sp_p_d) else "n/a",
         })
 
 hetero_df = pd.DataFrame(hetero_rows)
 
-print("\n" + "=" * 80)
-print("HETEROSCEDASTICITY DIAGNOSTICS")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Heteroscedasticity Diagnostics")
+print("-" * 70)
 for _, r in hetero_df.iterrows():
     print(f"\n{r['Target']} [{r['Set']}]:")
     print(f"  |Residual| vs Predicted: Spearman={r['Spearman_AbsRes_vs_Predicted']:.4f}  p={r['p_value_Predicted']:.4f}  -> {r['Heteroscedasticity_Predicted']}")
@@ -455,15 +455,15 @@ for _, r in hetero_df.iterrows():
 
 # 8. Cross-Validation Stability Diagnostics (from Step 8 Selection)
 
-print("\n" + "=" * 80)
-print("CV STABILITY DIAGNOSTICS (Repeated 5-Fold from Step 8)")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("CV Stability Diagnostics (repeated 5-fold from step 8)")
+print("-" * 70)
 
 stability_rows = []
 for target in TARGETS:
     m_row = ml_final[ml_final["Target"] == target].iloc[0]
     cv_coeff_var = float(m_row["CV_RMSE_CoeffVar"])
-    verdict = "STABLE" if cv_coeff_var < 30.0 else "MODERATE" if cv_coeff_var < 50.0 else "UNSTABLE"
+    verdict = "stable" if cv_coeff_var < 30.0 else "moderate" if cv_coeff_var < 50.0 else "unstable"
 
     stability_rows.append({
         "Target": target,
@@ -512,14 +512,14 @@ for target in TARGETS:
         "MAE_Ratio_Holdout_over_Train": mae_ratio,
         "Train_Violations": train_sub["Physical_Violations"],
         "Holdout_Violations": ho_sub["Physical_Violations"],
-        "Overfit_Risk": "LOW" if rmse_ratio < 2.0 and r2_drop < 0.05 else "MODERATE" if rmse_ratio < 3.0 else "HIGH",
+        "Overfit_Risk": "low" if rmse_ratio < 2.0 and r2_drop < 0.05 else "moderate" if rmse_ratio < 3.0 else "high",
     })
 
 gap_df = pd.DataFrame(gap_rows)
 
-print("\n" + "=" * 80)
-print("TRAIN vs HOLDOUT GENERALIZATION GAP")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Train vs Holdout — Generalization Gap")
+print("-" * 70)
 for _, r in gap_df.iterrows():
     print(f"\n{r['Target']} — {r['Model']}")
     print(f"  Train  R2={r['Train_R2']:.6f}  RMSE={r['Train_RMSE']:.6f}")
@@ -553,7 +553,7 @@ for target in TARGETS:
                     "Residual": row["Residual"],
                     "Z_Score": float(z_score),
                     "Physical_Violation": row["Physical_Violation"],
-                    "Severity": "EXTREME (|z|>=3)" if abs(z_score) >= 3.0 else "MODERATE (2<=|z|<3)",
+                    "Severity": "extreme (|z|>=3)" if abs(z_score) >= 3.0 else "moderate (2<=|z|<3)",
                 })
 
 outlier_df = pd.DataFrame(outlier_rows) if outlier_rows else pd.DataFrame(columns=[
@@ -561,9 +561,9 @@ outlier_df = pd.DataFrame(outlier_rows) if outlier_rows else pd.DataFrame(column
     "Residual", "Z_Score", "Physical_Violation", "Severity"
 ])
 
-print("\n" + "=" * 80)
-print("OUTLIER IDENTIFICATION (|Z| >= 2)")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Outlier Identification (|z| >= 2)")
+print("-" * 70)
 if len(outlier_df) > 0:
     for target in TARGETS:
         sub = outlier_df[outlier_df["Target"] == target]
@@ -572,7 +572,7 @@ if len(outlier_df) > 0:
             for _, r in sub.iterrows():
                 print(f"  Point_{r['Point_ID']} (d={r['d']}, RPM={r['Rpm']}) [{r['Set']}]: res={r['Residual']:+.6f}  z={r['Z_Score']:+.3f}  {r['Severity']}")
 else:
-    print("  No outliers with |Z| >= 2 detected.")
+    print("No outliers with |Z| >= 2 detected.")
 
 
 # 11. Engineering Diagnostic Summary
@@ -592,23 +592,23 @@ for target in TARGETS:
     issues = []
     if ho_summ["Physical_Violations"] > 0:
         issues.append(f"{ho_summ['Physical_Violations']} physical violation(s) on holdout")
-    if gap["Overfit_Risk"] != "LOW":
-        issues.append(f"Overfit risk: {gap['Overfit_Risk']}")
-    if stab["Stability_Verdict"] != "STABLE":
+    if gap["Overfit_Risk"] != "low":
+        issues.append(f"overfit risk: {gap['Overfit_Risk']}")
+    if stab["Stability_Verdict"] != "stable":
         if target == "td_to":
-            issues.append(f"CV stability: {stab['Stability_Verdict']} (fold-sensitivity with LOW overfit risk; not memorization)")
+            issues.append(f"cv stability: {stab['Stability_Verdict']} (fold-sensitivity with low overfit risk; not memorization)")
         else:
-            issues.append(f"CV stability: {stab['Stability_Verdict']}")
+            issues.append(f"cv stability: {stab['Stability_Verdict']}")
     if train_summ["Normality_Status"].startswith("FAIL"):
-        issues.append("Train residuals non-normal (Shapiro-Wilk p<0.05)")
-    if het["Heteroscedasticity_Predicted"] == "DETECTED (p<0.05)":
-        issues.append("Heteroscedasticity detected (residual variance varies with predicted)")
-    if het["Heteroscedasticity_RPM"] == "DETECTED (p<0.05)":
-        issues.append("RPM-dependent error structure detected")
+        issues.append("train residuals non-normal (shapiro-wilk p<0.05)")
+    if het["Heteroscedasticity_Predicted"] == "detected (p<0.05)":
+        issues.append("heteroscedasticity detected (residual variance varies with predicted)")
+    if het["Heteroscedasticity_RPM"] == "detected (p<0.05)":
+        issues.append("rpm-dependent error structure detected")
     if n_outliers_train > 3:
         issues.append(f"{n_outliers_train} training outliers (|z|>=2)")
 
-    overall_verdict = "PASS" if len(issues) == 0 else "PASS WITH CAVEATS" if len(issues) <= 2 else "REQUIRES ATTENTION"
+    overall_verdict = "pass" if len(issues) == 0 else "pass with caveats" if len(issues) <= 2 else "requires attention"
 
     viol_note = "0 physical violations on holdout." if ho_summ["Physical_Violations"] == 0 else f"{ho_summ['Physical_Violations']} physical violation(s) on holdout."
     diag_notes = (
@@ -639,9 +639,9 @@ for target in TARGETS:
 
 eng_diag_df = pd.DataFrame(eng_diag_rows)
 
-print("\n" + "=" * 80)
-print("ENGINEERING DIAGNOSTIC SUMMARY")
-print("=" * 80)
+print("\n" + "-" * 70)
+print("Engineering Diagnostic Summary")
+print("-" * 70)
 for _, r in eng_diag_df.iterrows():
     print(f"\n{r['Target']} — {r['Model']}")
     print(f"  Holdout: R2={r['Holdout_R2']:.6f}  RMSE={r['Holdout_RMSE']:.6f}")
@@ -650,7 +650,7 @@ for _, r in eng_diag_df.iterrows():
     print(f"  Violations: Train={r['Physical_Violations_Train']}  Holdout={r['Physical_Violations_Holdout']}")
     print(f"  Diagnostic Notes: {r['Diagnostic_Notes']}")
     print(f"  Issues: {r['Issues_Found']}")
-    print(f"  >>> VERDICT: {r['Overall_Verdict']}")
+    print(f"  verdict: {r['Overall_Verdict']}")
 
 
 # 12. Write Output Workbook
@@ -678,7 +678,7 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
             "Residual stats, normality (Shapiro-Wilk), heteroscedasticity (Spearman), "
             "error by diameter, error by RPM regime, CV stability, train-vs-holdout gap, "
             "outlier identification (z-score), physical violation tracking",
-            "High aggregate R2 can hide structured errors — this step exposes any hidden patterns",
+            "High aggregate R2 can hide structured errors",
         ]
     })
     readme.to_excel(writer, sheet_name="README", index=False)
